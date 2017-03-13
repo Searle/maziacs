@@ -36,13 +36,13 @@ var cWidth;
 var cHeight;
 
 var maze= [];
-var mazeWidth= 24;
+var mazeWidth= 100;
 var mazeHeight= 30;
 
 var initMaze= function() {
     for ( var y= 0; y < mazeHeight; y++ ) {
         maze[y]= [];
-        for ( var x= 0; x < mazeHeight; x++ ) {
+        for ( var x= 0; x < mazeWidth; x++ ) {
             if ( Math.random() < .5 ) maze[y][x]= 1;
         }
     }
@@ -61,105 +61,63 @@ var ofyY= .5;
 var borderX= 2;
 var borderY= 2;
 
-var pxBorderX= pxTileWidth * borderX;
-var pxBorderY= pxTileHeight * borderY;
-
-var calcTilePos= function() {
+var calcTilePos= function( ofs, pos, p ) {
 
     var PI_2= Math.PI / 2;
 
-    var pos= [];
+    var pxTargetSize= p.pxTargetSize;
+    var pxTileSize= p.pxTileSize;
+    var border= p.border;
+    var mazeSize= p.mazeSize;
 
-    ofsX= mouseX / cWidth;
-
-    var pxMazeWidth= pxTileWidth * mazeWidth;
-    var pxMazeMove= cWidth - pxMazeWidth;
+    var pxBorder= border * pxTileSize;
+    var pxMazeSize= pxTileSize * mazeSize;
+    var pxMazeMove= pxTargetSize - pxMazeSize;
 
     if ( pxMazeMove > 0 ) pxMazeMove= 0;
 
-    var pxTileX0= pxMazeMove * ofsX;
-    var pxTileXN= pxTileX0 + pxMazeWidth;
+    var pxTile0= pxMazeMove * ofs;
+    var pxTileN= pxTile0 + pxMazeSize;
 
-    var borderTileX0= -1;
-    var borderTileX1= mazeWidth;
+    var borderTile0= -1;
+    var borderTile1= mazeSize;
 
-    var pxTileX= pxTileX0;
+    var pxTile= pxTile0;
 
     // <= !! Ein zusaetzlicher Wert wird noch benoetigt
-    for ( var tileX= 0; tileX <= mazeWidth; tileX++ ) {
+    for ( var tile= 0; tile <= mazeSize; tile++ ) {
 
-        if ( pxTileX < pxBorderX ) {
-            borderTileX0= tileX;
+        if ( pxTile < pxBorder ) {
+            borderTile0= tile;
 
-            var fTileX= (pxTileX - pxTileX0) / (pxBorderX - pxTileX0);
-            pos[tileX]= (1 - Math.sin(PI_2 + PI_2 * fTileX)) * pxBorderX;
+            var fTile= (pxTile - pxTile0) / (pxBorder - pxTile0);
+            pos[tile]= (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
         }
-        else if ( pxTileX >= cWidth - pxBorderX ) {
-            if ( borderTileX1 == mazeWidth ) borderTileX1= tileX;
+        else if ( pxTile >= pxTargetSize - pxBorder ) {
+            if ( borderTile1 == mazeSize ) borderTile1= tile;
 
-            var fTileX= (pxTileX - pxTileXN) / (cWidth - pxBorderX - pxTileXN);
-            pos[tileX]= cWidth - (1 - Math.sin(PI_2 + PI_2 * fTileX)) * pxBorderX;
+            var fTile= (pxTile - pxTileN) / (pxTargetSize - pxBorder - pxTileN);
+            pos[tile]= pxTargetSize - (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
         }
         else {
-            pos[tileX]= pxTileX;
+            pos[tile]= pxTile;
         }
 
-        pxTileX += pxTileWidth;
+        pxTile += pxTileSize;
     }
 
     // Zu breite Tiles abschmaelern (Passiert durch Sinus)
-    for ( ; borderTileX0 >= 0; borderTileX0-- ) {
-        if ( pos[borderTileX0 + 1] - pos[borderTileX0] > pxTileWidth ) {
-            pos[borderTileX0]= pos[borderTileX0 + 1] - pxTileWidth;
+    for ( ; borderTile0 >= 0; borderTile0-- ) {
+        if ( pos[borderTile0 + 1] - pos[borderTile0] > pxTileSize ) {
+            pos[borderTile0]= pos[borderTile0 + 1] - pxTileSize;
         }
     }
 
-    for ( ; borderTileX1 < mazeWidth; borderTileX1++ ) {
-        if ( pos[borderTileX1] - pos[borderTileX1 - 1] > pxTileWidth ) {
-            pos[borderTileX1]= pos[borderTileX1 - 1] + pxTileWidth;
+    for ( ; borderTile1 < mazeSize; borderTile1++ ) {
+        if ( pos[borderTile1] - pos[borderTile1 - 1] > pxTileSize ) {
+            pos[borderTile1]= pos[borderTile1 - 1] + pxTileSize;
         }
     }
-
-    return pos;
-}
-
-var fx_= function( tileX, dd ) {
-
-    ofsX= mouseX / cWidth;
-
-    var pxMazeWidth= pxTileWidth * mazeWidth;
-    var pxMazeMove= pxMazeWidth - cWidth;
-    var pxOfsX= pxMazeMove * (.5 - ofsX);
-
-    var toPxTileX= function( tileX ) {
-        return tileX * pxTileWidth - mazeWidth * pxTileWidth / 2 + cWidth * .5 + pxOfsX;
-    };
-
-    var toTileX= function( pxTileX ) {
-        return (-pxTileX - mazeWidth * pxTileWidth / 2+ cWidth * .5 + pxOfsX) / -pxTileWidth;
-    };
-
-    var pxTileX= toPxTileX(tileX);
-
-    if ( pxTileX < pxBorderX ) {
-        var pxTileX0= toPxTileX(0);
-        // var pxTileXB= toTileX(pxBorderX) * pxTileWidth;
-
-        var PI_2= Math.PI / 2;
-
-        var old_pxTileX= pxTileX;
-
-        var fTileX= (pxTileX - pxTileX0) / (pxBorderX - pxTileX0);
-        pxTileX= (1 - Math.sin(PI_2 + PI_2 * fTileX)) * pxBorderX;
-
-
-        if(d&&dd)console.log("HU", "old_pxTileX=", old_pxTileX, "tileX=", tileX, "pxTileX=", pxTileX, "pxTileX0=", pxTileX0, "fTileX=", fTileX);
-        
-    }
-
-if ( d && dd ) console.log("P", "pxOfsX=", pxOfsX, "pxMazeWidth=", pxMazeWidth, "cWidth=", cWidth, "pxTileX=", pxTileX);
-
-return pxTileX;
 }
 
 
@@ -167,44 +125,45 @@ var fy= function( tileY ) {
     return tileY / mazeHeight * cHeight;
 }
 
+// Wiederverwenden, um GC zu entlasten
+var posXs= [];
+var posYs= [];
+
 var drawMaze= function() {
     var c_= c; // Localize
 
+    calcTilePos(mouseX / cWidth, posXs, {
+        pxTargetSize: cWidth,
+        pxTileSize: pxTileWidth,
+        border: borderX,
+        mazeSize: mazeWidth,
+    });
+
+    calcTilePos( mouseY / cHeight, posYs, {
+        pxTargetSize: cHeight,
+        pxTileSize: pxTileHeight,
+        border: borderY,
+        mazeSize: mazeHeight,
+    });
+
     c.clearRect(0, 0, cWidth, cHeight);
-
-    var posXs= calcTilePos();
-
-    var fx= function( tileX ) {
-        return posXs[tileX];
-    };
 
     for ( var y= 0; y < mazeHeight; y++ ) {
         for ( var x= 0; x < mazeWidth; x++ ) {
 
-// if ( d ) console.log(x, x/mazeWidth, fx(x/mazeWidth));
+            var px0= posXs[x];
+            var px1= posXs[x + 1]
+            var py0= posYs[y];
+            var py1= posYs[y + 1]
 
-//            if ( maze[y][x] ) {
-/*
-                var px0= fx(x / mazeWidth) * cWidth;
-                var px1= fx((x + 1) / mazeWidth) * cWidth;
-                var py0= y * (cHeight / mazeHeight);
-                var py1= (y + 1) * (cHeight / mazeHeight);
-*/
-
-                var px0= fx(x);
-                var px1= fx(x + 1);
-                var py0= fy(y);
-                var py1= fy(y + 1);
-
-//                if ( px1 < px0 ) px1= px0;
-//                else if ( px1 - px0 >= 2 ) px0 += 1, px1 -= 1;
-
-                c_.fillStyle = 'rgb(' + Math.floor(255 * x / mazeWidth) + ',' + ((x & 1) ? 100 : 0) + ',0)';
-                c_.fillRect(px0, py0, px1 - px0, py1 - py0);
-//            }
+            if ( maze[y][x] ) {
+                c_.fillStyle = 'rgb(' + Math.floor(255 * x / mazeWidth) + ',' + (((x + y) & 1) ? 100 : 0) + ',0)';
+            }
+            else {
+                c_.fillStyle = 'rgb(255,255,255)';
+            }
+            c_.fillRect(px0, py0, px1 - px0, py1 - py0);
         }
-// if(mouseX !== undefined) d= 0;
-//d= 0;
     }
 }
 
@@ -225,7 +184,7 @@ var step= function( timestamp ) {
 
 window.requestAnimationFrame(step);
 
-setInterval(initMaze, 2000);
+// setInterval(initMaze, 2000);
 
 var redraw= function() {
     c.strokeStyle = 'blue';
