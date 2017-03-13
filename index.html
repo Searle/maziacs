@@ -73,58 +73,41 @@ var calcTilePos= function() {
     ofsX= mouseX / cWidth;
 
     var pxMazeWidth= pxTileWidth * mazeWidth;
-    var pxMazeMove= pxMazeWidth - cWidth;
+    var pxMazeMove= cWidth - pxMazeWidth;
 
-    if ( pxMazeMove < 0 ) pxMazeMove= 0;
+    if ( pxMazeMove > 0 ) pxMazeMove= 0;
 
-    var pxOfsX= pxMazeMove * (.5 - ofsX);
-
-    var toPxTileX= function( tileX ) {
-        return tileX * pxTileWidth - mazeWidth * pxTileWidth / 2 + cWidth * .5 + pxOfsX;
-    };
-
-    var toTileX= function( pxTileX ) {
-        return (-pxTileX - mazeWidth * pxTileWidth / 2+ cWidth * .5 + pxOfsX) / -pxTileWidth;
-    };
-
-    var pxTileX0= toPxTileX(0);
-    var pxTileXN= toPxTileX(mazeWidth);
+    var pxTileX0= pxMazeMove * ofsX;
+    var pxTileXN= pxTileX0 + pxMazeWidth;
 
     var borderTileX0= -1;
     var borderTileX1= mazeWidth;
-    
+
+    var pxTileX= pxTileX0;
+
     // <= !! Ein zusaetzlicher Wert wird noch benoetigt
     for ( var tileX= 0; tileX <= mazeWidth; tileX++ ) {
-
-        var pxTileX= toPxTileX(tileX);
 
         if ( pxTileX < pxBorderX ) {
             borderTileX0= tileX;
 
-            var old_pxTileX= pxTileX;
-
             var fTileX= (pxTileX - pxTileX0) / (pxBorderX - pxTileX0);
-            pxTileX= (1 - Math.sin(PI_2 + PI_2 * fTileX)) * pxBorderX;
-
-//            if(d&&dd)console.log("HU", "old_pxTileX=", old_pxTileX, "tileX=", tileX, "pxTileX=", pxTileX, "pxTileX0=", pxTileX0, "fTileX=", fTileX);
+            pos[tileX]= (1 - Math.sin(PI_2 + PI_2 * fTileX)) * pxBorderX;
         }
         else if ( pxTileX >= cWidth - pxBorderX ) {
-
             if ( borderTileX1 == mazeWidth ) borderTileX1= tileX;
 
-            var old_pxTileX= pxTileX;
-
             var fTileX= (pxTileX - pxTileXN) / (cWidth - pxBorderX - pxTileXN);
-            pxTileX= cWidth - (1 - Math.sin(PI_2 + PI_2 * fTileX)) * pxBorderX;
-            // pxTileX= cWidth - fTileX * pxBorderX;
-
-
-            // if(d)console.log("HU", "fTileX=", fTileX);
+            pos[tileX]= cWidth - (1 - Math.sin(PI_2 + PI_2 * fTileX)) * pxBorderX;
+        }
+        else {
+            pos[tileX]= pxTileX;
         }
 
-        pos[tileX]= pxTileX;
+        pxTileX += pxTileWidth;
     }
 
+    // Zu breite Tiles abschmaelern (Passiert durch Sinus)
     for ( ; borderTileX0 >= 0; borderTileX0-- ) {
         if ( pos[borderTileX0 + 1] - pos[borderTileX0] > pxTileWidth ) {
             pos[borderTileX0]= pos[borderTileX0 + 1] - pxTileWidth;
