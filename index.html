@@ -74,7 +74,7 @@ var ofsX= .1;  // 0 .. 1
 var ofyY= .5;
 
 
-var calcTilePos= function( view, pos, p ) {
+var calcTileProj= function( pos, proj, p ) {
 
     var PI_2= Math.PI / 2;
 
@@ -89,7 +89,7 @@ var calcTilePos= function( view, pos, p ) {
 
     if ( pxMazeMove > 0 ) pxMazeMove= 0;
 
-    var pxTile0= pxMazeMove * view / pxMazeSize;
+    var pxTile0= pxMazeMove * pos / pxMazeSize;
     var pxTileN= pxTile0 + pxMazeSize;
 
     var borderTile0= -1;
@@ -104,16 +104,16 @@ var calcTilePos= function( view, pos, p ) {
             borderTile0= tile;
 
             var fTile= (pxTile - pxTile0) / (pxBorder - pxTile0);
-            pos[tile]= (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
+            proj[tile]= (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
         }
         else if ( pxTile >= pxTargetSize - pxBorder ) {
             if ( borderTile1 == mazeSize ) borderTile1= tile;
 
             var fTile= (pxTile - pxTileN) / (pxTargetSize - pxBorder - pxTileN);
-            pos[tile]= pxTargetSize - (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
+            proj[tile]= pxTargetSize - (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
         }
         else {
-            pos[tile]= pxTile;
+            proj[tile]= pxTile;
         }
 
         pxTile += pxTileSize;
@@ -121,33 +121,41 @@ var calcTilePos= function( view, pos, p ) {
 
     // Zu breite Tiles abschmaelern (Passiert durch Sinus)
     for ( ; borderTile0 >= 0; borderTile0-- ) {
-        if ( pos[borderTile0 + 1] - pos[borderTile0] > pxTileSize ) {
-            pos[borderTile0]= pos[borderTile0 + 1] - pxTileSize;
+        if ( proj[borderTile0 + 1] - proj[borderTile0] > pxTileSize ) {
+            proj[borderTile0]= proj[borderTile0 + 1] - pxTileSize;
         }
     }
 
     for ( ; borderTile1 < mazeSize; borderTile1++ ) {
-        if ( pos[borderTile1] - pos[borderTile1 - 1] > pxTileSize ) {
-            pos[borderTile1]= pos[borderTile1 - 1] + pxTileSize;
+        if ( proj[borderTile1] - proj[borderTile1 - 1] > pxTileSize ) {
+            proj[borderTile1]= proj[borderTile1 - 1] + pxTileSize;
         }
     }
 }
 
 // Wiederverwenden, um GC zu entlasten
-var posXs= [];
-var posYs= [];
+var projX= [];
+var projY= [];
+
+var playerProjX;
+var playerProjY;
+
+var drawRect= function( x, y, size, h ) {
+    c.fillStyle= 'hsl(' + h + ',100%,60%)';
+    c.fillRect(x - size / 2, y - size / 2, size, size);
+};
 
 var drawMaze= function() {
     var c_= c; // Localize
 
-    calcTilePos(viewX, posXs, {
+    calcTileProj(viewX, projX, {
         pxTargetSize: cWidth,
         pxTileSize: pxTileWidth,
         border: borderX,
         mazeSize: mazeWidth,
     });
 
-    calcTilePos(viewY, posYs, {
+    calcTileProj(viewY, projY, {
         pxTargetSize: cHeight,
         pxTileSize: pxTileHeight,
         border: borderY,
@@ -156,16 +164,16 @@ var drawMaze= function() {
 
     c.clearRect(0, 0, cWidth, cHeight);
 
-    for ( var y= 0; y < mazeHeight; y++ ) {
-        for ( var x= 0; x < mazeWidth; x++ ) {
+    for ( var mazeY= 0; mazeY < mazeHeight; mazeY++ ) {
+        for ( var mazeX= 0; mazeX < mazeWidth; mazeX++ ) {
 
-            var px0= posXs[x];
-            var px1= posXs[x + 1]
-            var py0= posYs[y];
-            var py1= posYs[y + 1]
+            var px0= projX[mazeX];
+            var px1= projX[mazeX + 1]
+            var py0= projY[mazeY];
+            var py1= projY[mazeY + 1]
 
-            if ( maze[y][x] ) {
-                c_.fillStyle = 'rgb(' + Math.floor(255 * x / mazeWidth) + ',' + (((x + y) & 1) ? 100 : 0) + ',0)';
+            if ( maze[mazeY][mazeX] ) {
+                c_.fillStyle = 'rgb(' + Math.floor(255 * mazeX / mazeWidth) + ',' + (((mazeX + mazeY) & 1) ? 100 : 0) + ',0)';
             }
             else {
                 c_.fillStyle = 'rgb(255,255,255)';
@@ -173,6 +181,14 @@ var drawMaze= function() {
             c_.fillRect(px0, py0, px1 - px0, py1 - py0);
         }
     }
+
+    var mazeX= Math.floor(viewX / pxTileWidth);
+    var mazeY= Math.floor(viewY / pxTileHeight);
+    var fracX= (viewX % pxTileWidth) / pxTileWidth;
+    var fracY= (viewY % pxTileHeight) / pxTileHeight;
+    playerProjX= projX[mazeX] + (projX[mazeX + 1] - projX[mazeX]) * fracX;
+    playerProjY= projY[mazeY] + (projY[mazeY + 1] - projY[mazeY]) * fracY;
+    drawRect(playerProjX, playerProjY, 10, 20);
 }
 
 var lastTimestamp;
@@ -246,24 +262,22 @@ var dirs= [
 ];
 
 var GAME_SPEED= 50;
-var PLAYER_SPEED= 1000 / GAME_SPEED;
+var PLAYER_SPEED= 3000 / GAME_SPEED;
 
 var gameLogic= function() {
-    if ( mousePressTimestamp !== undefined && mousePressTimestamp >= MOUSE_CLICK_DELAY ) {
-        var dx= mouseX - cWidth / 2;
-        var dy= mouseY - cHeight / 2;
-
-//        console.log(dx, dy, Math.floor((Math.atan2(dx, dy) + Math.PI / 8) * 4 / Math.PI));
+    if ( playerProjX !== undefined && mousePressTimestamp !== undefined && mousePressTimestamp >= MOUSE_CLICK_DELAY ) {
+        var dx= mouseX - playerProjX;
+        var dy= mouseY - playerProjY;
         var dirIndex= Math.floor((Math.atan2(dx, dy) + Math.PI / 8) * 4 / Math.PI) + 4;
         var dirX= dirs[dirIndex][0];
         var dirY= dirs[dirIndex][1];
 
         viewX += dirX * cWidth / PLAYER_SPEED;
         if ( viewX < 0 ) viewX= 0;
-        else if ( viewX >= pxMazeWidth ) viewX= pxMazeWidth;
+        else if ( viewX >= pxMazeWidth ) viewX= pxMazeWidth - 1;
         viewY += dirY * cHeight / PLAYER_SPEED;
         if ( viewY < 0 ) viewY= 0;
-        else if ( viewY >= pxMazeHeight ) viewY= pxMazeHeight;
+        else if ( viewY >= pxMazeHeight ) viewY= pxMazeHeight - 1;
 
         // console.log(dirs[dirIndex]);
     }
