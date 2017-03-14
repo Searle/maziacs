@@ -1,5 +1,7 @@
 <title>Maziacs</title>
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
 <style>
     body {
         margin: 0;
@@ -7,6 +9,7 @@
         overflow: hidden;
     }
     #stage {
+        cursor: default;
         display: block;
         width: 100%;
         height: 100%;
@@ -39,8 +42,8 @@ var cWidth;
 var cHeight;
 
 var maze= [];
-var mazeWidth= 40;
-var mazeHeight= 30;
+var mazeWidth= 41;
+var mazeHeight= 31;
 
 var pxMazeWidth;
 var pxMazeHeight;
@@ -50,6 +53,11 @@ var viewY;
 
 var pxTileWidth= 48;
 var pxTileHeight= 48;
+var pxTileWidth2= pxTileWidth / 2;
+var pxTileHeight2= pxTileHeight / 2;
+
+var pxPlayerWidth= 20;
+var pxPlayerHeight= 20;
 
 var borderX= 2;
 var borderY= 2;
@@ -90,7 +98,7 @@ var initMaze= function() {
 //  Projection
 // =============================================================================
 
-// Wiederverwenden, um GC zu entlasten
+// Static, to prevent GCs
 var projX= [];
 var projY= [];
 
@@ -156,11 +164,6 @@ var calcTileProj= function( pos, proj, p ) {
     }
 };
 
-var drawRect= function( x, y, size, h ) {
-    c.fillStyle= 'hsl(' + h + ',100%,60%)';
-    c.fillRect(x - size / 2, y - size / 2, size, size);
-};
-
 var proj= function( x, y ) {
     var mazeX= Math.floor(x / pxTileWidth);
     var mazeY= Math.floor(y / pxTileHeight);
@@ -208,13 +211,16 @@ var calcProjs= function() {
 
 
 // =============================================================================
-//  Draw Maze
+//  Draw Canvas
 // =============================================================================
+
+var drawRect= function( x, y, w, h, hue ) {
+    c.fillStyle= 'hsl(' + hue + ',100%,60%)';
+    c.fillRect(x - w / 2, y - h / 2, w, h);
+};
 
 var drawMaze= function() {
     var c_= c; // Localize
-
-    c.clearRect(0, 0, cWidth, cHeight);
 
     for ( var mazeY= 0; mazeY < mazeHeight; mazeY++ ) {
         for ( var mazeX= 0; mazeX < mazeWidth; mazeX++ ) {
@@ -226,7 +232,7 @@ var drawMaze= function() {
 
             var content= maze[mazeY + 1][mazeX + 1];
 
-            if ( content == FLOOR ) {
+            if ( content == WALL ) {
                 c_.fillStyle = 'rgb(' + Math.floor(255 * mazeX / mazeWidth) + ',' + (((mazeX + mazeY) & 1) ? 100 : 0) + ',0)';
             }
             else {
@@ -235,13 +241,19 @@ var drawMaze= function() {
             c_.fillRect(px0, py0, px1 - px0, py1 - py0);
         }
     }
-
-    drawRect(playerProjX, playerProjY, 10, 20);
 }
+
+var drawPlayer= function() {
+    drawRect(playerProjX, playerProjY, pxPlayerWidth, pxPlayerHeight, 20);
+};
 
 var redraw= function() {
     calcProjs();
+
+    c.clearRect(0, 0, cWidth, cHeight);
+
     drawMaze();
+    drawPlayer();
 };
 
 var lastTimestamp;
@@ -317,6 +329,43 @@ var dirs= [
 var GAME_SPEED= 50;
 var PLAYER_SPEED= 3000 / GAME_SPEED;
 
+var fixMoves= [
+    [ 0, 1, 1, 1, 4, 0, 2, 3, 4, 8, 0, 9, 4, 12, 6, 0 ],
+    [ 0, 8, 2, 1, 2, 0, 2, 3, 8, 8, 0, 9, 4, 12, 6, 0 ],
+];
+
+var _movePlayer= function( viewX_, viewY_ ) {
+
+    var viewX1;
+    var viewY1;
+    var mazeX;
+    var mazeY= Math.floor(viewY / pxTileHeight);
+
+    var mazeX0= Math.floor((viewX_ - pxPlayerWidth / 2) / pxTileWidth);
+    var mazeY0= Math.floor((viewY_ - pxPlayerHeight / 2) / pxTileHeight);
+    var mazeX1= Math.floor((viewX_ + pxPlayerWidth / 2) / pxTileWidth);
+    var mazeY1= Math.floor((viewY_ + pxPlayerHeight / 2) / pxTileHeight);
+
+    var floor00= maze[mazeY0 + 1][mazeX0 + 1] !== FLOOR ? 1 : 0;
+    var floor01= maze[mazeY0 + 1][mazeX1 + 1] !== FLOOR ? 2 : 0;
+    var floor11= maze[mazeY1 + 1][mazeX1 + 1] !== FLOOR ? 4 : 0;
+    var floor10= maze[mazeY1 + 1][mazeX0 + 1] !== FLOOR ? 8 : 0;
+
+    var floor= floor00 + floor01 + floor10 + floor11;
+    if ( floor ) {
+        var action= fixMoves[Math.abs(viewX1 - viewX) > Math.abs(viewY1 - viewY) ? 0 : 1][floor];
+        if ( action === 0 ) return;
+
+        if ( action & 1 ) viewY_= mazeY1 * pxTileHeight + pxPlayerHeight / 2;
+        if ( action & 2 ) viewX_= mazeX0 * pxTileWidth + pxTileWidth - pxPlayerWidth / 2;
+        if ( action & 4 ) viewY_= mazeY0 * pxTileHeight + pxTileHeight - pxPlayerHeight / 2;
+        if ( action & 8 ) viewX_= mazeX1 * pxTileWidth + pxPlayerWidth / 2;
+    }
+
+    viewX= viewX_;
+    viewY= viewY_;
+}
+
 var movePlayer= function() {
     if ( playerProjX === undefined ) return;
     if ( mousePressTimestamp === undefined ) return;
@@ -325,15 +374,14 @@ var movePlayer= function() {
     var dx= mouseX - playerProjX;
     var dy= mouseY - playerProjY;
     var dist= dx * dx + dy * dy;
+
+    // Min. 20px (20^2)
     if ( dist < 400 ) {
         if ( playerIsMoving ) {
             var view= invProj(mouseX, mouseY);
 
             // mouseX/mouseY may be out of range
-            if ( view === undefined ) return;
-
-            viewX= view[0];
-            viewY= view[1];
+            if ( view !== undefined ) _movePlayer(view[0], view[1]);
         }
         return;
     }
@@ -344,13 +392,7 @@ var movePlayer= function() {
     var dirX= dirs[dirIndex][0];
     var dirY= dirs[dirIndex][1];
 
-    viewX += dirX * cWidth / PLAYER_SPEED;
-    if ( viewX < 0 ) viewX= 0;
-    else if ( viewX >= pxMazeWidth ) viewX= pxMazeWidth - 1;
-
-    viewY += dirY * cHeight / PLAYER_SPEED;
-    if ( viewY < 0 ) viewY= 0;
-    else if ( viewY >= pxMazeHeight ) viewY= pxMazeHeight - 1;
+    _movePlayer(viewX + dirX * cWidth / PLAYER_SPEED, viewY + dirY * cHeight / PLAYER_SPEED);
 };
 
 var gameLogic= function() {
