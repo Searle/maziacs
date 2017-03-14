@@ -36,10 +36,28 @@ var cWidth;
 var cHeight;
 
 var maze= [];
-var mazeWidth= 100;
+var mazeWidth= 30;
 var mazeHeight= 30;
 
+var pxMazeWidth;
+var pxMazeHeight;
+
+var viewX;
+var viewY;
+
+var pxTileWidth= 48;
+var pxTileHeight= 48;
+
+var borderX= 2;
+var borderY= 2;
+
 var initMaze= function() {
+
+    pxMazeWidth= pxTileWidth * mazeWidth;
+    pxMazeHeight= pxTileHeight * mazeHeight;
+    viewX= pxMazeWidth / 2;
+    viewY= pxMazeHeight / 2;
+
     for ( var y= 0; y < mazeHeight; y++ ) {
         maze[y]= [];
         for ( var x= 0; x < mazeWidth; x++ ) {
@@ -50,18 +68,13 @@ var initMaze= function() {
 //     console.table(maze);
 }
 
-var pxTileWidth= 48;
-var pxTileHeight= 48;
-
 var d= 1;
 
 var ofsX= .1;  // 0 .. 1
 var ofyY= .5;
 
-var borderX= 2;
-var borderY= 2;
 
-var calcTilePos= function( ofs, pos, p ) {
+var calcTilePos= function( view, pos, p ) {
 
     var PI_2= Math.PI / 2;
 
@@ -76,7 +89,7 @@ var calcTilePos= function( ofs, pos, p ) {
 
     if ( pxMazeMove > 0 ) pxMazeMove= 0;
 
-    var pxTile0= pxMazeMove * ofs;
+    var pxTile0= pxMazeMove * view / pxMazeSize;
     var pxTileN= pxTile0 + pxMazeSize;
 
     var borderTile0= -1;
@@ -120,11 +133,6 @@ var calcTilePos= function( ofs, pos, p ) {
     }
 }
 
-
-var fy= function( tileY ) {
-    return tileY / mazeHeight * cHeight;
-}
-
 // Wiederverwenden, um GC zu entlasten
 var posXs= [];
 var posYs= [];
@@ -132,14 +140,14 @@ var posYs= [];
 var drawMaze= function() {
     var c_= c; // Localize
 
-    calcTilePos(mouseX / cWidth, posXs, {
+    calcTilePos(viewX, posXs, {
         pxTargetSize: cWidth,
         pxTileSize: pxTileWidth,
         border: borderX,
         mazeSize: mazeWidth,
     });
 
-    calcTilePos( mouseY / cHeight, posYs, {
+    calcTilePos(viewY, posYs, {
         pxTargetSize: cHeight,
         pxTileSize: pxTileHeight,
         border: borderY,
@@ -200,6 +208,74 @@ var resizeCanvas= function() {
     redraw();
 }
 
+
+// =============================================================================
+//  Mouse
+// =============================================================================
+
+var MOUSE_CLICK_DELAY= 300;
+
+var mousePress;
+var mousePressTimestamp;
+
+var onMouseMove= function( e ) {
+    mouseX= e.clientX;
+    mouseY= e.clientY;
+};
+
+var onMouseDown= function( e ) {
+    mousePressTimestamp= e.timeStamp;
+    onMouseMove(e);
+}
+
+var onMouseUp= function( e ) {
+    if ( e.timeStamp - mousePressTimestamp < MOUSE_CLICK_DELAY ) {
+        console.log("click", e);
+        // click;
+    }
+    mousePressTimestamp= undefined;
+}
+
+
+// =============================================================================
+//  Game Logic
+// =============================================================================
+
+var dirs= [
+    [ 0, -1 ], [ -1, -1 ], [ -1, 0 ], [ -1, 1 ], [ 0, 1 ], [ 1, 1 ], [ 1, 0 ], [ 1, -1 ], [ 0, -1 ]
+];
+
+var GAME_SPEED= 50;
+var PLAYER_SPEED= 1000 / GAME_SPEED;
+
+var gameLogic= function() {
+    if ( mousePressTimestamp !== undefined && mousePressTimestamp >= MOUSE_CLICK_DELAY ) {
+        var dx= mouseX - cWidth / 2;
+        var dy= mouseY - cHeight / 2;
+
+//        console.log(dx, dy, Math.floor((Math.atan2(dx, dy) + Math.PI / 8) * 4 / Math.PI));
+        var dirIndex= Math.floor((Math.atan2(dx, dy) + Math.PI / 8) * 4 / Math.PI) + 4;
+        var dirX= dirs[dirIndex][0];
+        var dirY= dirs[dirIndex][1];
+
+        viewX += dirX * cWidth / PLAYER_SPEED;
+        if ( viewX < 0 ) viewX= 0;
+        else if ( viewX >= pxMazeWidth ) viewX= pxMazeWidth;
+        viewY += dirY * cHeight / PLAYER_SPEED;
+        if ( viewY < 0 ) viewY= 0;
+        else if ( viewY >= pxMazeHeight ) viewY= pxMazeHeight;
+
+        // console.log(dirs[dirIndex]);
+    }
+};
+
+
+// =============================================================================
+//  Init
+// =============================================================================
+
+setInterval(gameLogic, GAME_SPEED);
+
 var init= function() {
 
     initMaze();
@@ -210,7 +286,9 @@ var init= function() {
     window.addEventListener('resize', resizeCanvas, false);
     resizeCanvas();
 
-    window.addEventListener('mousemove', function( e ) { mouseX= e.clientX; mouseY= e.clientY; }, false);
+    window.addEventListener('mousemove', onMouseMove, false);
+    window.addEventListener('mousedown', onMouseDown, false);
+    window.addEventListener('mouseup', onMouseUp, false);
 }
 
 $(function() {
