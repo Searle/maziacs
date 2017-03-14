@@ -322,16 +322,23 @@ var onMouseUp= function( e ) {
 //  Game Logic
 // =============================================================================
 
-var dirs= [
-    [ 0, -1 ], [ -1, -1 ], [ -1, 0 ], [ -1, 1 ], [ 0, 1 ], [ 1, 1 ], [ 1, 0 ], [ 1, -1 ], [ 0, -1 ]
-];
-
 var GAME_SPEED= 50;
 var PLAYER_SPEED= 3000 / GAME_SPEED;
 
-var fixMoves= [
-    [ 0, 1, 1, 1, 4, 0, 2, 3, 4, 8, 0, 9, 4, 12, 6, 0 ],
-    [ 0, 8, 2, 1, 2, 0, 2, 3, 8, 8, 0, 9, 4, 12, 6, 0 ],
+//  1 2    walls:
+//  8 4    On which sides does player collide -> Index into wallActions
+//
+//    1    wallActions:
+//  8   2  Which position must be corrected
+//    4    E.g: Walls at 2 + 4 + 8
+//              ==> walls == 14
+//              ==> wallAction[walls] == 12
+//              ==> Correct left (8) and bottom (4)
+//         wallAction for e.g. walls == 1 depend on player's heading
+
+var wallActions= [
+    [ 0, 1, 1, 1, 4, 0, 2, 3, 4, 8, 0, 9, 4, 12, 6, 0 ],        // horizontal movement
+    [ 0, 8, 2, 1, 2, 0, 2, 3, 8, 8, 0, 9, 4, 12, 6, 0 ],        // vertical movement
 ];
 
 var _movePlayer= function( viewX_, viewY_ ) {
@@ -346,14 +353,14 @@ var _movePlayer= function( viewX_, viewY_ ) {
     var mazeX1= Math.floor((viewX_ + pxPlayerWidth / 2) / pxTileWidth);
     var mazeY1= Math.floor((viewY_ + pxPlayerHeight / 2) / pxTileHeight);
 
-    var floor00= maze[mazeY0 + 1][mazeX0 + 1] !== FLOOR ? 1 : 0;
-    var floor01= maze[mazeY0 + 1][mazeX1 + 1] !== FLOOR ? 2 : 0;
-    var floor11= maze[mazeY1 + 1][mazeX1 + 1] !== FLOOR ? 4 : 0;
-    var floor10= maze[mazeY1 + 1][mazeX0 + 1] !== FLOOR ? 8 : 0;
+    var walls00= maze[mazeY0 + 1][mazeX0 + 1] !== FLOOR ? 1 : 0;
+    var walls01= maze[mazeY0 + 1][mazeX1 + 1] !== FLOOR ? 2 : 0;
+    var walls11= maze[mazeY1 + 1][mazeX1 + 1] !== FLOOR ? 4 : 0;
+    var walls10= maze[mazeY1 + 1][mazeX0 + 1] !== FLOOR ? 8 : 0;
 
-    var floor= floor00 + floor01 + floor10 + floor11;
-    if ( floor ) {
-        var action= fixMoves[Math.abs(viewX1 - viewX) > Math.abs(viewY1 - viewY) ? 0 : 1][floor];
+    var walls= walls00 + walls01 + walls10 + walls11;
+    if ( walls ) {
+        var action= wallActions[Math.abs(viewX1 - viewX) > Math.abs(viewY1 - viewY) ? 0 : 1][walls];
         if ( action === 0 ) return;
 
         if ( action & 1 ) viewY_= mazeY1 * pxTileHeight + pxPlayerHeight / 2;
@@ -388,11 +395,9 @@ var movePlayer= function() {
 
     playerIsMoving= true;
 
-    var dirIndex= Math.floor((Math.atan2(dx, dy) + Math.PI / 8) * 4 / Math.PI) + 4;
-    var dirX= dirs[dirIndex][0];
-    var dirY= dirs[dirIndex][1];
-
-    _movePlayer(viewX + dirX * cWidth / PLAYER_SPEED, viewY + dirY * cHeight / PLAYER_SPEED);
+    var alpha= Math.atan2(dx, dy);
+    _movePlayer(viewX + Math.sin(alpha) * cWidth / PLAYER_SPEED,
+                viewY + Math.cos(alpha) * cHeight / PLAYER_SPEED);
 };
 
 var gameLogic= function() {
