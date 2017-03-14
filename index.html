@@ -36,8 +36,8 @@ var cWidth;
 var cHeight;
 
 var maze= [];
-var mazeWidth= 30;
-var mazeHeight= 30;
+var mazeWidth= 10;
+var mazeHeight= 10;
 
 var pxMazeWidth;
 var pxMazeHeight;
@@ -67,12 +67,6 @@ var initMaze= function() {
 
 //     console.table(maze);
 }
-
-var d= 1;
-
-var ofsX= .1;  // 0 .. 1
-var ofyY= .5;
-
 
 var calcTileProj= function( pos, proj, p ) {
 
@@ -131,7 +125,7 @@ var calcTileProj= function( pos, proj, p ) {
             proj[borderTile1]= proj[borderTile1 - 1] + pxTileSize;
         }
     }
-}
+};
 
 // Wiederverwenden, um GC zu entlasten
 var projX= [];
@@ -143,6 +137,30 @@ var playerProjY;
 var drawRect= function( x, y, size, h ) {
     c.fillStyle= 'hsl(' + h + ',100%,60%)';
     c.fillRect(x - size / 2, y - size / 2, size, size);
+};
+
+var proj= function( x, y ) {
+    var mazeX= Math.floor(x / pxTileWidth);
+    var mazeY= Math.floor(y / pxTileHeight);
+    var fracX= (x % pxTileWidth) / pxTileWidth;
+    var fracY= (y % pxTileHeight) / pxTileHeight;
+    return [ projX[mazeX] + (projX[mazeX + 1] - projX[mazeX]) * fracX
+           , projY[mazeY] + (projY[mazeY + 1] - projY[mazeY]) * fracY ];
+};
+
+// TODO: Optimieren falls oefter benoetigt
+var invProj= function( x, y ) {
+    for ( var xi= projX.length - 2; xi >= 0; xi-- ) {
+        if ( x >= projX[xi] ) {
+            for ( var yi= projY.length - 2; yi >= 0; yi-- ) {
+                if ( y >= projY[yi] ) {
+                    return [ (xi + (x - projX[xi]) / (projX[xi + 1] - projX[xi])) * pxTileWidth
+                           , (yi + (y - projY[yi]) / (projY[yi + 1] - projY[yi])) * pxTileHeight ];
+                }
+            }
+            return;
+        }
+    }
 };
 
 var drawMaze= function() {
@@ -182,12 +200,10 @@ var drawMaze= function() {
         }
     }
 
-    var mazeX= Math.floor(viewX / pxTileWidth);
-    var mazeY= Math.floor(viewY / pxTileHeight);
-    var fracX= (viewX % pxTileWidth) / pxTileWidth;
-    var fracY= (viewY % pxTileHeight) / pxTileHeight;
-    playerProjX= projX[mazeX] + (projX[mazeX + 1] - projX[mazeX]) * fracX;
-    playerProjY= projY[mazeY] + (projY[mazeY + 1] - projY[mazeY]) * fracY;
+    var playerProj= proj(viewX, viewY);
+    playerProjX= playerProj[0];
+    playerProjY= playerProj[1];
+
     drawRect(playerProjX, playerProjY, 10, 20);
 }
 
@@ -204,25 +220,21 @@ var step= function( timestamp ) {
         drawMaze();
     }
     window.requestAnimationFrame(step);
-}
+};
 
 window.requestAnimationFrame(step);
 
 // setInterval(initMaze, 2000);
 
 var redraw= function() {
-    c.strokeStyle = 'blue';
-    c.lineWidth = '5';
-    c.strokeRect(0, 0, cWidth, cHeight);
-
     drawMaze();
-}
+};
 
 var resizeCanvas= function() {
     canvas.width= cWidth= window.innerWidth;
     canvas.height= cHeight= window.innerHeight;
     redraw();
-}
+};
 
 
 // =============================================================================
@@ -233,6 +245,7 @@ var MOUSE_CLICK_DELAY= 300;
 
 var mousePress;
 var mousePressTimestamp;
+var playerIsMoving;
 
 var onMouseMove= function( e ) {
     mouseX= e.clientX;
@@ -240,8 +253,9 @@ var onMouseMove= function( e ) {
 };
 
 var onMouseDown= function( e ) {
-    mousePressTimestamp= e.timeStamp;
     onMouseMove(e);
+    mousePressTimestamp= e.timeStamp;
+    playerIsMoving= undefined;
 }
 
 var onMouseUp= function( e ) {
@@ -250,7 +264,7 @@ var onMouseUp= function( e ) {
         // click;
     }
     mousePressTimestamp= undefined;
-}
+};
 
 
 // =============================================================================
@@ -264,24 +278,41 @@ var dirs= [
 var GAME_SPEED= 50;
 var PLAYER_SPEED= 3000 / GAME_SPEED;
 
-var gameLogic= function() {
-    if ( playerProjX !== undefined && mousePressTimestamp !== undefined && mousePressTimestamp >= MOUSE_CLICK_DELAY ) {
-        var dx= mouseX - playerProjX;
-        var dy= mouseY - playerProjY;
-        var dirIndex= Math.floor((Math.atan2(dx, dy) + Math.PI / 8) * 4 / Math.PI) + 4;
-        var dirX= dirs[dirIndex][0];
-        var dirY= dirs[dirIndex][1];
+var movePlayer= function() {
+    if ( playerProjX === undefined ) return;
+    if ( mousePressTimestamp === undefined ) return;
+    if ( mousePressTimestamp < MOUSE_CLICK_DELAY ) return;
 
-        viewX += dirX * cWidth / PLAYER_SPEED;
-        if ( viewX < 0 ) viewX= 0;
-        else if ( viewX >= pxMazeWidth ) viewX= pxMazeWidth - 1;
-        viewY += dirY * cHeight / PLAYER_SPEED;
-        if ( viewY < 0 ) viewY= 0;
-        else if ( viewY >= pxMazeHeight ) viewY= pxMazeHeight - 1;
-
-        // console.log(dirs[dirIndex]);
+    var dx= mouseX - playerProjX;
+    var dy= mouseY - playerProjY;
+    var dist= dx * dx + dy * dy;
+    if ( dist < 400 ) {
+        if ( playerIsMoving ) {
+            var view= invProj(mouseX, mouseY);
+            viewX= view[0];
+            viewY= view[1];
+        }
+        return;
     }
+
+    playerIsMoving= true;
+
+    var dirIndex= Math.floor((Math.atan2(dx, dy) + Math.PI / 8) * 4 / Math.PI) + 4;
+    var dirX= dirs[dirIndex][0];
+    var dirY= dirs[dirIndex][1];
+
+    viewX += dirX * cWidth / PLAYER_SPEED;
+    if ( viewX < 0 ) viewX= 0;
+    else if ( viewX >= pxMazeWidth ) viewX= pxMazeWidth - 1;
+
+    viewY += dirY * cHeight / PLAYER_SPEED;
+    if ( viewY < 0 ) viewY= 0;
+    else if ( viewY >= pxMazeHeight ) viewY= pxMazeHeight - 1;
 };
+
+var gameLogic= function() {
+    movePlayer();
+}
 
 
 // =============================================================================
@@ -303,7 +334,7 @@ var init= function() {
     window.addEventListener('mousemove', onMouseMove, false);
     window.addEventListener('mousedown', onMouseDown, false);
     window.addEventListener('mouseup', onMouseUp, false);
-}
+};
 
 $(function() {
     init();
