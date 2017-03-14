@@ -1,3 +1,5 @@
+<title>Maziacs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
     body {
         margin: 0;
@@ -17,6 +19,7 @@
         border: 1px solid #000;
         width: 100px;
         height: 50px;
+        overflow: hidden;
     }
 </style>
 
@@ -36,8 +39,8 @@ var cWidth;
 var cHeight;
 
 var maze= [];
-var mazeWidth= 10;
-var mazeHeight= 10;
+var mazeWidth= 40;
+var mazeHeight= 30;
 
 var pxMazeWidth;
 var pxMazeHeight;
@@ -51,6 +54,10 @@ var pxTileHeight= 48;
 var borderX= 2;
 var borderY= 2;
 
+var FRAME= -1;
+var FLOOR= 0;
+var WALL= 1;
+
 var initMaze= function() {
 
     pxMazeWidth= pxTileWidth * mazeWidth;
@@ -58,15 +65,37 @@ var initMaze= function() {
     viewX= pxMazeWidth / 2;
     viewY= pxMazeHeight / 2;
 
-    for ( var y= 0; y < mazeHeight; y++ ) {
+    for ( var y= 0; y <= mazeHeight + 1; y++ ) {
         maze[y]= [];
-        for ( var x= 0; x < mazeWidth; x++ ) {
-            if ( Math.random() < .5 ) maze[y][x]= 1;
+        maze[y][0]= FRAME;
+        maze[y][mazeWidth + 1]= FRAME;
+    }
+
+    for ( var x= 1; x <= mazeWidth; x++ ) {
+        maze[0][x]= FRAME;
+        maze[mazeHeight + 1][x]= FRAME;
+    }
+
+    for ( var y= 1; y <= mazeHeight; y++ ) {
+        for ( var x= 1; x <= mazeWidth; x++ ) {
+            maze[y][x]= Math.random() < .5 ? WALL : FLOOR;
         }
     }
 
 //     console.table(maze);
 }
+
+
+// =============================================================================
+//  Projection
+// =============================================================================
+
+// Wiederverwenden, um GC zu entlasten
+var projX= [];
+var projY= [];
+
+var playerProjX;
+var playerProjY;
 
 var calcTileProj= function( pos, proj, p ) {
 
@@ -127,13 +156,6 @@ var calcTileProj= function( pos, proj, p ) {
     }
 };
 
-// Wiederverwenden, um GC zu entlasten
-var projX= [];
-var projY= [];
-
-var playerProjX;
-var playerProjY;
-
 var drawRect= function( x, y, size, h ) {
     c.fillStyle= 'hsl(' + h + ',100%,60%)';
     c.fillRect(x - size / 2, y - size / 2, size, size);
@@ -163,8 +185,7 @@ var invProj= function( x, y ) {
     }
 };
 
-var drawMaze= function() {
-    var c_= c; // Localize
+var calcProjs= function() {
 
     calcTileProj(viewX, projX, {
         pxTargetSize: cWidth,
@@ -180,6 +201,19 @@ var drawMaze= function() {
         mazeSize: mazeHeight,
     });
 
+    var playerProj= proj(viewX, viewY);
+    playerProjX= playerProj[0];
+    playerProjY= playerProj[1];
+};
+
+
+// =============================================================================
+//  Draw Maze
+// =============================================================================
+
+var drawMaze= function() {
+    var c_= c; // Localize
+
     c.clearRect(0, 0, cWidth, cHeight);
 
     for ( var mazeY= 0; mazeY < mazeHeight; mazeY++ ) {
@@ -190,7 +224,9 @@ var drawMaze= function() {
             var py0= projY[mazeY];
             var py1= projY[mazeY + 1]
 
-            if ( maze[mazeY][mazeX] ) {
+            var content= maze[mazeY + 1][mazeX + 1];
+
+            if ( content == FLOOR ) {
                 c_.fillStyle = 'rgb(' + Math.floor(255 * mazeX / mazeWidth) + ',' + (((mazeX + mazeY) & 1) ? 100 : 0) + ',0)';
             }
             else {
@@ -200,12 +236,13 @@ var drawMaze= function() {
         }
     }
 
-    var playerProj= proj(viewX, viewY);
-    playerProjX= playerProj[0];
-    playerProjY= playerProj[1];
-
     drawRect(playerProjX, playerProjY, 10, 20);
 }
+
+var redraw= function() {
+    calcProjs();
+    drawMaze();
+};
 
 var lastTimestamp;
 var step= function( timestamp ) {
@@ -217,7 +254,7 @@ var step= function( timestamp ) {
 
         $('#debug').html(1000 / duration);
 
-        drawMaze();
+        redraw();
     }
     window.requestAnimationFrame(step);
 };
@@ -225,10 +262,6 @@ var step= function( timestamp ) {
 window.requestAnimationFrame(step);
 
 // setInterval(initMaze, 2000);
-
-var redraw= function() {
-    drawMaze();
-};
 
 var resizeCanvas= function() {
     canvas.width= cWidth= window.innerWidth;
@@ -248,6 +281,11 @@ var mousePressTimestamp;
 var playerIsMoving;
 
 var onMouseMove= function( e ) {
+    if ( e.changedTouches && e.changedTouches.length > 0 ) {
+        mouseX= e.changedTouches[0].clientX;
+        mouseY= e.changedTouches[0].clientY;
+        return;
+    }
     mouseX= e.clientX;
     mouseY= e.clientY;
 };
@@ -264,6 +302,7 @@ var onMouseUp= function( e ) {
         // click;
     }
     mousePressTimestamp= undefined;
+    if ( e.cancelable ) e.preventDefault();
 };
 
 
@@ -289,6 +328,10 @@ var movePlayer= function() {
     if ( dist < 400 ) {
         if ( playerIsMoving ) {
             var view= invProj(mouseX, mouseY);
+
+            // mouseX/mouseY may be out of range
+            if ( view === undefined ) return;
+
             viewX= view[0];
             viewY= view[1];
         }
@@ -331,8 +374,11 @@ var init= function() {
     window.addEventListener('resize', resizeCanvas, false);
     resizeCanvas();
 
-    window.addEventListener('mousemove', onMouseMove, false);
+    window.addEventListener('touchstart', onMouseDown, false);
     window.addEventListener('mousedown', onMouseDown, false);
+    window.addEventListener('touchmove', onMouseMove, false);
+    window.addEventListener('mousemove', onMouseMove, false);
+    window.addEventListener('touchend', onMouseUp, false);
     window.addEventListener('mouseup', onMouseUp, false);
 };
 
