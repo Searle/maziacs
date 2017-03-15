@@ -42,8 +42,8 @@ var cWidth;
 var cHeight;
 
 var maze= [];
-var mazeWidth= 7;
-var mazeHeight= 5;
+var mazeWidth= 15;
+var mazeHeight= 15;
 
 var pxMazeWidth;
 var pxMazeHeight;
@@ -66,13 +66,12 @@ var CALC= -3;
 var FRAME= -2;
 var WALL= -1;
 var FLOOR= 0;
+var FLOOR_CALC= 0;
 
 var initMaze= function() {
 
     pxMazeWidth= pxTileWidth * mazeWidth;
     pxMazeHeight= pxTileHeight * mazeHeight;
-    viewX= pxMazeWidth / 2; //  + pxTileWidth;
-    viewY= pxMazeHeight / 2; //  + pxTileHeight;
 
     for ( var y= 0; y <= mazeHeight + 1; y++ ) {
         maze[y]= [];
@@ -101,7 +100,7 @@ var initMaze= function() {
 
     var dirs= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
 
-    var floor= 0;
+    var floor= FLOOR_CALC;
 
     while ( true ) {
 
@@ -111,7 +110,7 @@ var initMaze= function() {
                 if ( maze[y][x] === CALC ) sample.push([ x, y ]);
             }
         }
-        if ( sample.length === 0 ) return;
+        if ( sample.length === 0 ) break;
 
         var retry= true;
         while ( retry ) {
@@ -140,7 +139,7 @@ var initMaze= function() {
                     }
                     dir= (dir + 1) & 3;
                 }
-                if ( i >= 4 && floor > 0 ) {
+                if ( i >= 4 && floor > FLOOR_CALC ) {
                     for ( var y= 1; y <= mazeHeight; y += 2 ) {
                         for ( var x= 1; x <= mazeWidth; x += 2 ) {
                             if ( maze[y][x] === floor ) maze[y][x]= CALC;
@@ -156,6 +155,71 @@ var initMaze= function() {
 
         floor++;
     }
+
+    var _calcDistances= function( startPosX, startPosY ) {
+
+        var distance= FLOOR;
+        var key= startPosX + ':' + startPosY;
+        var queue= [ [ key, startPosX, startPosY, distance ] ];
+        var maxDistanceKey= key;
+        var maxDistance= distance;
+
+        var lookup= {};
+        lookup[key]= [ startPosX, startPosY, distance, undefined ];
+
+        while ( queue.length > 0 ) {
+            var pos= queue.pop();
+            var key= pos[0];
+            var posX= pos[1];
+            var posY= pos[2];
+            var distance= pos[3] + 1;
+
+            for ( var dir= 0; dir < 4; dir++ ) {
+                var nextPosX= posX + dirs[dir][0];
+                var nextPosY= posY + dirs[dir][1];
+                if ( maze[nextPosY][nextPosX] < FLOOR_CALC ) continue;
+
+                var nextKey= nextPosX + ':' + nextPosY;
+                if ( nextKey in lookup ) continue;
+
+                lookup[nextKey]= [ nextPosX, nextPosY, distance, key ];
+
+                // Children merken, falls benoetigt
+                // lookup[key].push(nextKey);
+
+                queue.push([ nextKey, nextPosX, nextPosY, distance ]);
+
+                if ( distance > maxDistance ) {
+                    maxDistanceKey= nextKey;
+                    maxDistance= distance;
+                }
+            }
+        }
+
+        // console.table(lookup);
+
+        return {
+            lookup: lookup,
+            maxDistanceKey: maxDistanceKey,
+            maxDistance: maxDistance,
+        };
+    };
+
+    // Find most distant cell
+    var dists= _calcDistances(1,1);
+    var startPos= dists.lookup[dists.maxDistanceKey];
+
+    // Take the most distant cell and recalculate distances
+    dists= _calcDistances(startPos[0], startPos[1]);
+
+    // Set maze floor data
+    for ( var key in dists.lookup ) {
+        var pos= dists.lookup[key];
+        maze[pos[1]][pos[0]]= pos[2];
+    }
+
+    viewX= (startPos[0] - .5) * pxTileWidth;
+    viewY= (startPos[1] - .5) * pxTileHeight;
 
     // console.table(maze);
 }
@@ -233,8 +297,6 @@ var calcTileProj= function( pos, proj, p ) {
             proj[borderTile1]= proj[borderTile1 - 1] + pxTileSize;
         }
     }
-console.log(proj);
-
 };
 
 var proj= function( x, y ) {
@@ -307,10 +369,13 @@ var drawMaze= function() {
 
             if ( content == WALL ) {
                 // c_.fillStyle = 'rgb(' + Math.floor(255 * mazeX / mazeWidth) + ',' + (((mazeX + mazeY) & 1) ? 100 : 0) + ',0)';
-                c_.fillStyle = 'rgb(50,100,0)';
+                c_.fillStyle = 'rgb(20,100,0)';
+            }
+            else if ( content >= FLOOR ) {
+                c_.fillStyle = 'hsl(10,50%,' + (content - FLOOR) +'%)';
             }
             else {
-                c_.fillStyle = 'rgb(255,255,255)';
+                c_.fillStyle = 'rgb(0,0,0)';
             }
             c_.fillRect(px0, py0, px1 - px0, py1 - py0);
         }
