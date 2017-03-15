@@ -45,11 +45,14 @@ var maze= [];
 var mazeWidth= 15;
 var mazeHeight= 15;
 
+var dists;
+var items;
+
 var pxMazeWidth;
 var pxMazeHeight;
 
-var viewX;
-var viewY;
+var pxViewX;
+var pxViewY;
 
 var pxTileWidth= 48;
 var pxTileHeight= 48;
@@ -62,11 +65,115 @@ var pxPlayerHeight= 20;
 var borderX= 2;
 var borderY= 2;
 
+var DOOR= -5;
+var KEY= -4;
 var CALC= -3;
 var FRAME= -2;
 var WALL= -1;
 var FLOOR= 0;
 var FLOOR_CALC= 0;
+
+var dirs= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
+
+
+// =============================================================================
+//  Calculate distances from point in maze
+// =============================================================================
+
+var calcDistances= function( startPosX, startPosY ) {
+
+    var distance= 0;
+    var key= startPosX + ':' + startPosY;
+    var queue= [ [ key, startPosX, startPosY, distance ] ];
+    var maxDistanceKey= key;
+    var maxDistance= distance;
+
+    var lookup= {};
+    lookup[key]= [ startPosX, startPosY, distance, undefined ];
+
+    var byDistance= [ [ key ] ];
+
+    while ( queue.length > 0 ) {
+        var pos= queue.pop();
+        var key= pos[0];
+        var posX= pos[1];
+        var posY= pos[2];
+        var distance= pos[3] + 1;
+
+        for ( var dir= 0; dir < 4; dir++ ) {
+            var nextPosX= posX + dirs[dir][0];
+            var nextPosY= posY + dirs[dir][1];
+            if ( maze[nextPosY][nextPosX] < FLOOR_CALC ) continue;
+
+            var nextKey= nextPosX + ':' + nextPosY;
+            if ( nextKey in lookup ) continue;
+
+            lookup[nextKey]= [ nextPosX, nextPosY, distance, key ];
+
+            // Children merken, falls benoetigt
+            // lookup[key].push(nextKey);
+
+            if ( byDistance.length - 1 < distance ) {
+                byDistance[distance]= [ nextKey ];
+            }
+            else {
+                byDistance[distance].push(nextKey);
+            }
+
+            queue.push([ nextKey, nextPosX, nextPosY, distance ]);
+
+            if ( distance > maxDistance ) {
+                maxDistanceKey= nextKey;
+                maxDistance= distance;
+            }
+        }
+    }
+
+    return {
+        lookup: lookup,
+        maxDistanceKey: maxDistanceKey,
+        maxDistance: maxDistance,
+        byDistance: byDistance,
+    };
+};
+
+
+// =============================================================================
+//  Generate new maze
+// =============================================================================
+
+var genItems= function() {
+
+    items= {};
+
+    var byDistance= dists.byDistance;
+    var distance= byDistance.length;
+
+    for ( var i= 0; i < 3; i++ ) {
+
+        var keys= [];
+        for ( var k= 0; k < 2; k++ ) {
+            distance -= 10;
+
+            while ( distance > 10 && keys[k] === undefined ) {
+                for ( var j= byDistance[distance].length - 1; j >= 0; j-- ) {
+                    if ( !(byDistance[distance][j] in items) ) {
+                        keys[k]= byDistance[distance][j];
+                        break;
+                    }
+                }
+                distance--;
+            }
+        }
+
+        if ( keys.length === 2 ) {
+            items[keys[0]]= { type: DOOR, color: i };
+            items[keys[1]]= { type: KEY, color: i };
+        }
+    }
+
+    console.table(items);
+};
 
 var initMaze= function() {
 
@@ -98,8 +205,6 @@ var initMaze= function() {
 
     // Slow, horrible and naive. Ok for now...
 
-    var dirs= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
-
     var floor= FLOOR_CALC;
 
     while ( true ) {
@@ -124,6 +229,8 @@ var initMaze= function() {
                 maze[posY][posX]= floor;
 
                 var dir= Math.floor(Math.random() * 4);
+
+                // IDEE: bei i == 3 bzw == 2 werden wirds wiggliger
                 for ( var i= 0; i < 4; i++ ) {
                     var wallPosX= posX + dirs[dir][0];
                     var wallPosY= posY + dirs[dir][1];
@@ -156,70 +263,27 @@ var initMaze= function() {
         floor++;
     }
 
-    var _calcDistances= function( startPosX, startPosY ) {
-
-        var distance= FLOOR;
-        var key= startPosX + ':' + startPosY;
-        var queue= [ [ key, startPosX, startPosY, distance ] ];
-        var maxDistanceKey= key;
-        var maxDistance= distance;
-
-        var lookup= {};
-        lookup[key]= [ startPosX, startPosY, distance, undefined ];
-
-        while ( queue.length > 0 ) {
-            var pos= queue.pop();
-            var key= pos[0];
-            var posX= pos[1];
-            var posY= pos[2];
-            var distance= pos[3] + 1;
-
-            for ( var dir= 0; dir < 4; dir++ ) {
-                var nextPosX= posX + dirs[dir][0];
-                var nextPosY= posY + dirs[dir][1];
-                if ( maze[nextPosY][nextPosX] < FLOOR_CALC ) continue;
-
-                var nextKey= nextPosX + ':' + nextPosY;
-                if ( nextKey in lookup ) continue;
-
-                lookup[nextKey]= [ nextPosX, nextPosY, distance, key ];
-
-                // Children merken, falls benoetigt
-                // lookup[key].push(nextKey);
-
-                queue.push([ nextKey, nextPosX, nextPosY, distance ]);
-
-                if ( distance > maxDistance ) {
-                    maxDistanceKey= nextKey;
-                    maxDistance= distance;
-                }
-            }
-        }
-
-        // console.table(lookup);
-
-        return {
-            lookup: lookup,
-            maxDistanceKey: maxDistanceKey,
-            maxDistance: maxDistance,
-        };
-    };
 
     // Find most distant cell
-    var dists= _calcDistances(1,1);
-    var startPos= dists.lookup[dists.maxDistanceKey];
+    var dists_= calcDistances(1,1);
+    var startPos= dists_.lookup[dists_.maxDistanceKey];
 
     // Take the most distant cell and recalculate distances
-    dists= _calcDistances(startPos[0], startPos[1]);
+    dists= calcDistances(startPos[0], startPos[1]);
+
+console.log(startPos);
+console.table(dists.byDistance);
+
+    genItems();
 
     // Set maze floor data
     for ( var key in dists.lookup ) {
         var pos= dists.lookup[key];
-        maze[pos[1]][pos[0]]= pos[2];
+        maze[pos[1]][pos[0]]= FLOOR + pos[2];
     }
 
-    viewX= (startPos[0] - .5) * pxTileWidth;
-    viewY= (startPos[1] - .5) * pxTileHeight;
+    pxViewX= (startPos[0] - .5) * pxTileWidth;
+    pxViewY= (startPos[1] - .5) * pxTileHeight;
 
     // console.table(maze);
 }
@@ -229,7 +293,7 @@ var initMaze= function() {
 //  Projection
 // =============================================================================
 
-// Static, to prevent GCs
+// Static, to reduce GCs
 var projX= [];
 var projY= [];
 
@@ -325,21 +389,33 @@ var invProj= function( x, y ) {
 
 var calcProjs= function() {
 
-    calcTileProj(viewX, projX, {
+    calcTileProj(pxViewX, projX, {
         pxTargetSize: cWidth,
         pxTileSize: pxTileWidth,
         border: borderX,
         mazeSize: mazeWidth,
     });
 
-    calcTileProj(viewY, projY, {
+    calcTileProj(pxViewY, projY, {
         pxTargetSize: cHeight,
         pxTileSize: pxTileHeight,
         border: borderY,
         mazeSize: mazeHeight,
     });
 
-    var playerProj= proj(viewX, viewY);
+/*
+    var mazeX= Math.floor(pxViewX / pxTileWidth);
+    var mazeY= Math.floor(pxViewY / pxTileHeight);
+    var dists= calcDistances(mazeX + 1, mazeY + 1);
+
+    // Set maze floor data
+    for ( var key in dists.lookup ) {
+        var pos= dists.lookup[key];
+        maze[pos[1]][pos[0]]= pos[2];
+    }
+*/
+
+    var playerProj= proj(pxViewX, pxViewY);
     playerProjX= playerProj[0];
     playerProjY= playerProj[1];
 };
@@ -378,6 +454,13 @@ var drawMaze= function() {
                 c_.fillStyle = 'rgb(0,0,0)';
             }
             c_.fillRect(px0, py0, px1 - px0, py1 - py0);
+
+            var key= (mazeX + 1) + ':' + (mazeY + 1);
+            if ( key in items ) {
+                var w= 10, h= 10;
+                if ( items[key].type == DOOR ) h= 20; else w= 20;
+                drawRect((px0 + px1) / 2, (py0 + py1) / 2, w, h, items[key].color * 40);
+            }
         }
     }
 }
@@ -481,17 +564,17 @@ var wallActions= [
     [ 0, 8, 2, 1, 2, 0, 2, 3, 8, 8, 0, 9, 4, 12, 6, 0 ],        // vertical movement
 ];
 
-var _movePlayer= function( viewX_, viewY_ ) {
+var _movePlayer= function( pxViewX_, pxViewY_ ) {
 
-    var viewX1;
-    var viewY1;
+    var pxViewX1;
+    var pxViewY1;
     var mazeX;
-    var mazeY= Math.floor(viewY / pxTileHeight);
+    var mazeY= Math.floor(pxViewY / pxTileHeight);
 
-    var mazeX0= Math.floor((viewX_ - pxPlayerWidth / 2) / pxTileWidth);
-    var mazeY0= Math.floor((viewY_ - pxPlayerHeight / 2) / pxTileHeight);
-    var mazeX1= Math.floor((viewX_ + pxPlayerWidth / 2) / pxTileWidth);
-    var mazeY1= Math.floor((viewY_ + pxPlayerHeight / 2) / pxTileHeight);
+    var mazeX0= Math.floor((pxViewX_ - pxPlayerWidth / 2) / pxTileWidth);
+    var mazeY0= Math.floor((pxViewY_ - pxPlayerHeight / 2) / pxTileHeight);
+    var mazeX1= Math.floor((pxViewX_ + pxPlayerWidth / 2) / pxTileWidth);
+    var mazeY1= Math.floor((pxViewY_ + pxPlayerHeight / 2) / pxTileHeight);
 
     var walls00= maze[mazeY0 + 1][mazeX0 + 1] < FLOOR ? 1 : 0;
     var walls01= maze[mazeY0 + 1][mazeX1 + 1] < FLOOR ? 2 : 0;
@@ -500,17 +583,17 @@ var _movePlayer= function( viewX_, viewY_ ) {
 
     var walls= walls00 + walls01 + walls10 + walls11;
     if ( walls ) {
-        var action= wallActions[Math.abs(viewX1 - viewX) > Math.abs(viewY1 - viewY) ? 0 : 1][walls];
+        var action= wallActions[Math.abs(pxViewX1 - pxViewX) > Math.abs(pxViewY1 - pxViewY) ? 0 : 1][walls];
         if ( action === 0 ) return;
 
-        if ( action & 1 ) viewY_= mazeY1 * pxTileHeight + pxPlayerHeight / 2;
-        if ( action & 2 ) viewX_= mazeX0 * pxTileWidth + pxTileWidth - pxPlayerWidth / 2;
-        if ( action & 4 ) viewY_= mazeY0 * pxTileHeight + pxTileHeight - pxPlayerHeight / 2;
-        if ( action & 8 ) viewX_= mazeX1 * pxTileWidth + pxPlayerWidth / 2;
+        if ( action & 1 ) pxViewY_= mazeY1 * pxTileHeight + pxPlayerHeight / 2;
+        if ( action & 2 ) pxViewX_= mazeX0 * pxTileWidth + pxTileWidth - pxPlayerWidth / 2;
+        if ( action & 4 ) pxViewY_= mazeY0 * pxTileHeight + pxTileHeight - pxPlayerHeight / 2;
+        if ( action & 8 ) pxViewX_= mazeX1 * pxTileWidth + pxPlayerWidth / 2;
     }
 
-    viewX= viewX_;
-    viewY= viewY_;
+    pxViewX= pxViewX_;
+    pxViewY= pxViewY_;
 }
 
 var movePlayer= function() {
@@ -536,8 +619,8 @@ var movePlayer= function() {
     playerIsMoving= true;
 
     var alpha= Math.atan2(dx, dy);
-    _movePlayer(viewX + Math.sin(alpha) * cWidth / PLAYER_SPEED,
-                viewY + Math.cos(alpha) * cHeight / PLAYER_SPEED);
+    _movePlayer(pxViewX + Math.sin(alpha) * cWidth / PLAYER_SPEED,
+                pxViewY + Math.cos(alpha) * cHeight / PLAYER_SPEED);
 };
 
 var gameLogic= function() {
