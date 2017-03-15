@@ -92,6 +92,7 @@ var calcDistances= function( startPosX, startPosY ) {
     lookup[key]= [ startPosX, startPosY, distance, undefined ];
 
     var byDistance= [ [ key ] ];
+    var deadEnds= [];
 
     while ( queue.length > 0 ) {
         var pos= queue.pop();
@@ -100,6 +101,7 @@ var calcDistances= function( startPosX, startPosY ) {
         var posY= pos[2];
         var distance= pos[3] + 1;
 
+        var isDeadEnd= true;
         for ( var dir= 0; dir < 4; dir++ ) {
             var nextPosX= posX + dirs[dir][0];
             var nextPosY= posY + dirs[dir][1];
@@ -121,11 +123,15 @@ var calcDistances= function( startPosX, startPosY ) {
             }
 
             queue.push([ nextKey, nextPosX, nextPosY, distance ]);
+            isDeadEnd= false;
 
             if ( distance > maxDistance ) {
                 maxDistanceKey= nextKey;
                 maxDistance= distance;
             }
+        }
+        if ( isDeadEnd ) {
+            deadEnds.push(key);
         }
     }
 
@@ -134,31 +140,121 @@ var calcDistances= function( startPosX, startPosY ) {
         maxDistanceKey: maxDistanceKey,
         maxDistance: maxDistance,
         byDistance: byDistance,
+        deadEnds: deadEnds,
     };
 };
+
+var genItems= function() {
+    items= {};
+
+    var lookup= dists.lookup;
+    var maxDistance= dists.maxDistance;
+    var maxDistanceKey= dists.maxDistanceKey;
+    var deadEnds= dists.deadEnds;
+
+    var solution= [];
+    var solutionLookup= {};
+
+    var key= maxDistanceKey;
+    while ( key ) {
+        solutionLookup[key]= maxDistance - solution.length;
+        solution.unshift([ key ]);
+        key= lookup[key][3];
+    }
+
+    for ( var i= 0; i < deadEnds.length; i++ ) {
+        var key= deadEnds[i];
+        if ( key === maxDistanceKey ) continue;
+
+        while ( key ) {
+            if ( key in solutionLookup ) {
+                solution[solutionLookup[key]].push(deadEnds[i]);
+                break;
+            }
+            key= lookup[key][3];
+        }
+    }
+
+    var end= solution.length / 10;
+
+    for ( var i= 0; i < 3; i++ ) {
+        var doorKey= undefined;
+        var ix= Math.floor(Math.random() * (solution.length - end * 4) + end * 3);
+        while ( ix >= end * 3 ) {
+            if ( solution[ix].length == 1 && !(solution[ix] in items) ) {
+                doorKey= solution[ix][0];
+                break;
+            }
+            ix--;
+        }
+        if ( doorKey !== undefined ) {
+            var keyKey= undefined;
+            var ix1= Math.floor(Math.random() * (ix - end * 1) + end * 1);
+            while ( ix1 < ix ) {
+                if ( solution[ix1].length > 1 ) {
+                    var keyKey1= solution[ix1][Math.floor(Math.random() * (solution[ix1].length - 1)) + 1];
+                    if ( !(keyKey1 in items) ) {
+                        keyKey= keyKey1;
+                        break;
+                    }
+                }
+                ix1++;
+            }
+            if ( keyKey !== undefined ) {
+                items[doorKey]= { type: DOOR, color: i };
+                items[keyKey]= { type: KEY, color: i };
+            }
+        }
+    }
+
+    // console.table(lookup);
+    // console.table(solution);
+    // console.log(solutionLookup);
+    // console.table(items);
+    // console.log(deadEnds);
+    // console.table(solution);
+}
 
 
 // =============================================================================
 //  Generate new maze
 // =============================================================================
 
-var genItems= function() {
+var XX_genItems= function() {
 
     items= {};
 
     var byDistance= dists.byDistance;
     var distance= byDistance.length;
 
-    for ( var i= 0; i < 3; i++ ) {
+    var step= Math.floor(distance / 10);
 
-        var keys= [];
+    // 3 doors + 3 keys
+    for ( var i= 0; i < 3; i++ ) {
+        var keys= [ undefined, undefined ];
+
+        distance= byDistance.length - i * step;
+
+        // k: 0=door, 1=key
         for ( var k= 0; k < 2; k++ ) {
-            distance -= 10;
+
+            distance= Math.floor(distance * .5 + Math.random() * distance * .5);
+
+            // distance -= step;
 
             while ( distance > 10 && keys[k] === undefined ) {
-                for ( var j= byDistance[distance].length - 1; j >= 0; j-- ) {
-                    if ( !(byDistance[distance][j] in items) ) {
-                        keys[k]= byDistance[distance][j];
+
+                var check;
+                if ( k == 0 ) {
+                    check= [ byDistance[distance][0] ];
+                }
+                else {
+                    check= byDistance[distance];
+                }
+
+                for ( var j= check.length - 1; j >= 0; j-- ) {
+                    if ( !(check[j] in items) ) {
+                        keys[k]= check[j];
                         break;
                     }
                 }
@@ -166,7 +262,7 @@ var genItems= function() {
             }
         }
 
-        if ( keys.length === 2 ) {
+        if ( keys[0] && keys[1] ) {
             items[keys[0]]= { type: DOOR, color: i };
             items[keys[1]]= { type: KEY, color: i };
         }
@@ -175,7 +271,7 @@ var genItems= function() {
     console.table(items);
 };
 
-var initMaze= function() {
+var genMaze= function() {
 
     pxMazeWidth= pxTileWidth * mazeWidth;
     pxMazeHeight= pxTileHeight * mazeHeight;
@@ -231,7 +327,8 @@ var initMaze= function() {
                 var dir= Math.floor(Math.random() * 4);
 
                 // IDEE: bei i == 3 bzw == 2 werden wirds wiggliger
-                for ( var i= 0; i < 4; i++ ) {
+                var i_max= floor === FLOOR_CALC ? 4 : 2;
+                for ( var i= 0; i < i_max; i++ ) {
                     var wallPosX= posX + dirs[dir][0];
                     var wallPosY= posY + dirs[dir][1];
                     if ( maze[wallPosY][wallPosX] === WALL ) {
@@ -246,7 +343,7 @@ var initMaze= function() {
                     }
                     dir= (dir + 1) & 3;
                 }
-                if ( i >= 4 && floor > FLOOR_CALC ) {
+                if ( i >= i_max && floor > FLOOR_CALC ) {
                     for ( var y= 1; y <= mazeHeight; y += 2 ) {
                         for ( var x= 1; x <= mazeWidth; x += 2 ) {
                             if ( maze[y][x] === floor ) maze[y][x]= CALC;
@@ -271,8 +368,8 @@ var initMaze= function() {
     // Take the most distant cell and recalculate distances
     dists= calcDistances(startPos[0], startPos[1]);
 
-console.log(startPos);
-console.table(dists.byDistance);
+// console.log(startPos);
+// console.table(dists.byDistance);
 
     genItems();
 
@@ -458,7 +555,7 @@ var drawMaze= function() {
             var key= (mazeX + 1) + ':' + (mazeY + 1);
             if ( key in items ) {
                 var w= 10, h= 10;
-                if ( items[key].type == DOOR ) h= 20; else w= 20;
+                if ( items[key].type == DOOR ) w= 40, h= 40; else w= 20;
                 drawRect((px0 + px1) / 2, (py0 + py1) / 2, w, h, items[key].color * 40);
             }
         }
@@ -496,7 +593,7 @@ var step= function( timestamp ) {
 
 window.requestAnimationFrame(step);
 
-// setInterval(initMaze, 2000);
+// setInterval(genMaze, 2000);
 
 var resizeCanvas= function() {
     canvas.width= cWidth= window.innerWidth;
@@ -636,7 +733,7 @@ setInterval(gameLogic, GAME_SPEED);
 
 var init= function() {
 
-    initMaze();
+    genMaze();
 
     canvas= document.getElementById('stage');
     c= canvas.getContext('2d');
