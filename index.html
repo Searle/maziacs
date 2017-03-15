@@ -42,8 +42,8 @@ var cWidth;
 var cHeight;
 
 var maze= [];
-var mazeWidth= 41;
-var mazeHeight= 31;
+var mazeWidth= 7;
+var mazeHeight= 5;
 
 var pxMazeWidth;
 var pxMazeHeight;
@@ -71,8 +71,8 @@ var initMaze= function() {
 
     pxMazeWidth= pxTileWidth * mazeWidth;
     pxMazeHeight= pxTileHeight * mazeHeight;
-    viewX= pxMazeWidth / 2 + pxTileWidth;
-    viewY= pxMazeHeight / 2 + pxTileHeight;
+    viewX= pxMazeWidth / 2; //  + pxTileWidth;
+    viewY= pxMazeHeight / 2; //  + pxTileHeight;
 
     for ( var y= 0; y <= mazeHeight + 1; y++ ) {
         maze[y]= [];
@@ -184,10 +184,14 @@ var calcTileProj= function( pos, proj, p ) {
     var pxBorder= border * pxTileSize;
     var pxMazeSize= pxTileSize * mazeSize;
     var pxMazeMove= pxTargetSize - pxMazeSize;
-
     if ( pxMazeMove > 0 ) pxMazeMove= 0;
 
     var pxTile0= pxMazeMove * pos / pxMazeSize;
+    if ( pxMazeSize < pxTargetSize ) {
+        pxTile0 += (pxTargetSize - pxMazeSize) / 2;
+        pxTargetSize= pxTile0 + pxMazeSize;
+    }
+
     var pxTileN= pxTile0 + pxMazeSize;
 
     var borderTile0= -1;
@@ -229,6 +233,8 @@ var calcTileProj= function( pos, proj, p ) {
             proj[borderTile1]= proj[borderTile1 - 1] + pxTileSize;
         }
     }
+console.log(proj);
+
 };
 
 var proj= function( x, y ) {
@@ -318,7 +324,8 @@ var drawPlayer= function() {
 var redraw= function() {
     calcProjs();
 
-    c.clearRect(0, 0, cWidth, cHeight);
+    c.fillStyle = 'rgb(0,0,0)';
+    c.fillRect(0, 0, cWidth, cHeight);
 
     drawMaze();
     drawPlayer();
