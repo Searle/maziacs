@@ -77,6 +77,10 @@ var FLOOR_CALC= 0;
 
 var dirs= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
 
+var random= function( from, until ) {
+    return Math.floor(Math.random() * (until - from) + from);
+};
+
 
 // =============================================================================
 //  Calculate distances from point in maze
@@ -197,10 +201,10 @@ var genItems= function() {
     var _makeDoorKey= function( doorKey, ix ) {
         var keyKey;
         var entryKeyKey;
-        var ix1= Math.floor(Math.random() * (ix - KEY_MIN_POS) + KEY_MIN_POS);
+        var ix1= random(KEY_MIN_POS, ix);
         while ( ix1 < ix ) {
             if ( solution[ix1].length > 1 ) {
-                var deadEndInfo= solution[ix1][Math.floor(Math.random() * (solution[ix1].length - 1)) + 1];
+                var deadEndInfo= solution[ix1][random(1, solution[ix1].length)];
                 if ( !(deadEndInfo[0] in items) ) {
                     keyKey= deadEndInfo[0];
                     entryKeyKey= deadEndInfo[1];
@@ -223,7 +227,7 @@ var genItems= function() {
 
     for ( var i= doorsMake * 3; i > 0 && doorsMake > 0; i-- ) {
         var doorKey= undefined;
-        var ix= Math.floor(Math.random() * (solution.length - (DOOR_MAX_POS + DOOR_MIN_POS)) + DOOR_MIN_POS);
+        var ix= random(DOOR_MIN_POS, solution.length - DOOR_MAX_POS);
         while ( ix >= DOOR_MIN_POS ) {
             if ( solution[ix].length == 1 && !(solution[ix] in items) ) {
                 doorKey= solution[ix][0];
@@ -305,14 +309,14 @@ var genMaze= function() {
         while ( retry ) {
             retry= false;
 
-            var pos= sample[Math.floor(Math.random() * sample.length)];
+            var pos= sample[random(0, sample.length)];
             var posX= pos[0];
             var posY= pos[1];
 
             while ( maze[posY][posX] === CALC ) {
                 maze[posY][posX]= floor;
 
-                var dir= Math.floor(Math.random() * 4);
+                var dir= random(0, 4);
 
                 // IDEE: bei i == 3 bzw == 2 werden wirds wiggliger
                 var i_max= floor === FLOOR_CALC ? 4 : 2;
@@ -731,7 +735,7 @@ var moveMonster= function( monster, monsterSpeed ) {
     if ( monster.atTarget === 0 ) {
         var mazeX= Math.floor(monster.x / pxTileWidth);
         var mazeY= Math.floor(monster.y / pxTileHeight);
-        var dir= Math.floor(Math.random() * 4);
+        var dir= random(0, 4);
         for ( var i= 0; i < 4; i++ ) {
             var mazeX1= mazeX + dirs[dir][0];
             var mazeY1= mazeY + dirs[dir][1];
