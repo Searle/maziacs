@@ -177,10 +177,15 @@ var genItems= function() {
 
     var end= solution.length / 10;
 
-    for ( var i= 0; i < 3; i++ ) {
+    var DOOR_MAX_POS= end;
+    var DOOR_MIN_POS= end * 2;
+    var KEY_MIN_POS= end;
+    var doors_make= 3;
+
+    for ( var i= doors_make * 3; i > 0 && doors_make > 0; i-- ) {
         var doorKey= undefined;
-        var ix= Math.floor(Math.random() * (solution.length - end * 4) + end * 3);
-        while ( ix >= end * 3 ) {
+        var ix= Math.floor(Math.random() * (solution.length - (DOOR_MAX_POS + DOOR_MIN_POS)) + DOOR_MIN_POS);
+        while ( ix >= DOOR_MIN_POS ) {
             if ( solution[ix].length == 1 && !(solution[ix] in items) ) {
                 doorKey= solution[ix][0];
                 break;
@@ -189,7 +194,7 @@ var genItems= function() {
         }
         if ( doorKey !== undefined ) {
             var keyKey= undefined;
-            var ix1= Math.floor(Math.random() * (ix - end * 1) + end * 1);
+            var ix1= Math.floor(Math.random() * (ix - KEY_MIN_POS) + KEY_MIN_POS);
             while ( ix1 < ix ) {
                 if ( solution[ix1].length > 1 ) {
                     var keyKey1= solution[ix1][Math.floor(Math.random() * (solution[ix1].length - 1)) + 1];
@@ -203,6 +208,7 @@ var genItems= function() {
             if ( keyKey !== undefined ) {
                 items[doorKey]= { type: DOOR, color: i };
                 items[keyKey]= { type: KEY, color: i };
+                doors_make--;
             }
         }
     }
