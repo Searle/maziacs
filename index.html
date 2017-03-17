@@ -157,7 +157,7 @@ var genItems= function() {
 
     var key= maxDistanceKey;
     while ( key ) {
-        solutionLookup[key]= maxDistance - solution.length;
+        solutionLookup[key]= maxDistance - solution.length; // == lookup[key][2]
         solution.unshift([ key ]);
         key= lookup[key][3];
     }
@@ -166,11 +166,13 @@ var genItems= function() {
         var key= deadEnds[i];
         if ( key === maxDistanceKey ) continue;
 
+        var prevKey= undefined;
         while ( key ) {
             if ( key in solutionLookup ) {
-                solution[solutionLookup[key]].push(deadEnds[i]);
+                solution[solutionLookup[key]].push([ deadEnds[i], prevKey ]);
                 break;
             }
+            prevKey= key;
             key= lookup[key][3];
         }
     }
@@ -180,9 +182,38 @@ var genItems= function() {
     var DOOR_MAX_POS= end;
     var DOOR_MIN_POS= end * 2;
     var KEY_MIN_POS= end;
-    var doors_make= 3;
 
-    for ( var i= doors_make * 3; i > 0 && doors_make > 0; i-- ) {
+    // FIXME: Find sane formula
+    var doorsMake= Math.floor(Math.pow(mazeWidth * mazeHeight, .45) * .5);
+
+    var _makeDoorKey= function( doorKey, ix ) {
+        var keyKey;
+        var entryKeyKey;
+        var ix1= Math.floor(Math.random() * (ix - KEY_MIN_POS) + KEY_MIN_POS);
+        while ( ix1 < ix ) {
+            if ( solution[ix1].length > 1 ) {
+                var deadEndInfo= solution[ix1][Math.floor(Math.random() * (solution[ix1].length - 1)) + 1];
+                if ( !(deadEndInfo[0] in items) ) {
+                    keyKey= deadEndInfo[0];
+                    entryKeyKey= deadEndInfo[1];
+                    break;
+                }
+            }
+            ix1++;
+        }
+        if ( keyKey !== undefined ) {
+            doorsMake--;
+            items[doorKey]= { type: DOOR, color: doorsMake };
+            items[keyKey]= { type: KEY, color: doorsMake };
+
+            // 50% chance to place a key at start of junction to block current
+            if ( doorsMake > 0 && entryKeyKey && Math.random() > .5 ) {
+                _makeDoorKey(entryKeyKey, ix1);
+            }
+        }
+    };
+
+    for ( var i= doorsMake * 3; i > 0 && doorsMake > 0; i-- ) {
         var doorKey= undefined;
         var ix= Math.floor(Math.random() * (solution.length - (DOOR_MAX_POS + DOOR_MIN_POS)) + DOOR_MIN_POS);
         while ( ix >= DOOR_MIN_POS ) {
@@ -193,23 +224,7 @@ var genItems= function() {
             ix--;
         }
         if ( doorKey !== undefined ) {
-            var keyKey= undefined;
-            var ix1= Math.floor(Math.random() * (ix - KEY_MIN_POS) + KEY_MIN_POS);
-            while ( ix1 < ix ) {
-                if ( solution[ix1].length > 1 ) {
-                    var keyKey1= solution[ix1][Math.floor(Math.random() * (solution[ix1].length - 1)) + 1];
-                    if ( !(keyKey1 in items) ) {
-                        keyKey= keyKey1;
-                        break;
-                    }
-                }
-                ix1++;
-            }
-            if ( keyKey !== undefined ) {
-                items[doorKey]= { type: DOOR, color: i };
-                items[keyKey]= { type: KEY, color: i };
-                doors_make--;
-            }
+            _makeDoorKey(doorKey, ix);
         }
     }
 
