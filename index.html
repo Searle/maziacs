@@ -221,7 +221,7 @@ var genItems= function() {
         }
         if ( keyKey !== undefined ) {
             doorsMake--;
-            items[doorKey]= { type: DOOR, color: doorsMake };
+            items[doorKey]= { type: DOOR, color: doorsMake, opening: 0 };
             items[keyKey]= { type: KEY, color: doorsMake };
 
             // 50% chance to place a key at start of junction to block current
@@ -605,9 +605,14 @@ var _getColoredSpriteImage= function( x, y, color, withShadow ) {
     return cachedSpriteImages[key];
 }
 
-var getSpriteImage= function( type, color ) {
-    if ( type === KEY ) {
-        return _getColoredSpriteImage(0, 0, color, true);
+var getItemImage= function( item ) {
+    if ( item.type === KEY ) {
+        return _getColoredSpriteImage(0, 0, item.color, true);
+    }
+    if ( item.type === DOOR ) {
+        if ( item.opening < 0 ) return;
+
+        return _getColoredSpriteImage(Math.floor(item.opening), 1, item.color, true);
     }
 };
 
@@ -649,11 +654,11 @@ var drawMaze= function() {
             var key= (mazeX + 1) + ':' + (mazeY + 1);
             if ( key in items ) {
 
-                if ( items[key].type == KEY ) {
-
-                    var spriteImage= getSpriteImage(KEY, items[key].color);
-
-                    c.drawImage(spriteImage, 0, 0, pxTileWidth, pxTileHeight, px0, py0, px1 - px0, py1 - py0);
+                if ( items[key].type == KEY || items[key].type == DOOR ) {
+                    var itemImage= getItemImage(items[key]);
+                    if ( itemImage ) {
+                        c.drawImage(itemImage, 0, 0, pxTileWidth, pxTileHeight, px0, py0, px1 - px0, py1 - py0);
+                    }
                     continue;
                 }
 
@@ -813,11 +818,12 @@ var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
 
         if ( items[key].type === KEY ) {
             console.log("KEY!");
-            
         }
         if ( items[key].type === DOOR ) {
+            if ( items[key].opening === 0 ) {
+                items[key].opening= .1;
+            }
             console.log("DOOR!");
-            
         }
     }
 
@@ -922,16 +928,29 @@ var moveMonsters= function( monsterSpeed ) {
     }
 };
 
+var moveItems= function( itemSpeed ) {
+    for ( var key in items ) {
+        var item= items[key];
+        if ( item.type === DOOR && item.opening > 0 ) {
+            item.opening += itemSpeed;
+            if ( item.opening >= 7 ) {
+                item.opening= -1;
+            }
+        }
+    }
+};
+
 
 // =============================================================================
 //  Game Logic
 // =============================================================================
 
-var GAME_SPEED= 50;
+var TICKS_PER_SECOND= 50;
 
 var gameLogic= function() {
-    movePlayer(GAME_SPEED / 3000);
-    moveMonsters(GAME_SPEED / 10000);
+    moveItems(TICKS_PER_SECOND / 80);
+    movePlayer(TICKS_PER_SECOND / 3000);
+    moveMonsters(TICKS_PER_SECOND / 10000);
 };
 
 
@@ -957,7 +976,7 @@ var init= function() {
     window.addEventListener('mouseup', onMouseUp, false);
 
     window.requestAnimationFrame(step);
-    setInterval(gameLogic, GAME_SPEED);
+    setInterval(gameLogic, TICKS_PER_SECOND);
 };
 
 window.addEventListener('load', function() {
