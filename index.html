@@ -26,12 +26,14 @@
     }
 </style>
 
-<script src="sprint-master/sprint.js"></script>
+<Xscript src="sprint-master/sprint.js"></Xscript>
 
 <script>
 (function() {
 
 "use strict";
+
+var DEBUG= true;
 
 var mouseX;
 var mouseY;
@@ -42,8 +44,8 @@ var cWidth;
 var cHeight;
 
 var maze= [];
-var mazeWidth= 15;
-var mazeHeight= 15;
+var mazeWidth= 7;
+var mazeHeight= 7;
 
 var dists;
 var items;
@@ -79,6 +81,10 @@ var dirs= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
 
 var random= function( from, until ) {
     return Math.floor(Math.random() * (until - from) + from);
+};
+
+var randomf= function( from, until ) {
+    return Math.random() * (until - from) + from;
 };
 
 
@@ -518,6 +524,95 @@ var calcProjs= function() {
 
 
 // =============================================================================
+//  Sprites
+// =============================================================================
+
+var spritesImage;
+var shadowsImage;
+var spriteCanvas= document.createElement('canvas');
+// spriteCanvas.width= 128;
+// spriteCanvas.height= 128;
+var spriteContext= spriteCanvas.getContext('2d');
+
+var cachedRgbs= [];
+
+var getRgb= function( color ) {
+    if ( !(color in cachedRgbs) ) {
+        spriteContext.fillStyle= 'hsl(' + (color * 40) + ',100%,60%)';
+        spriteContext.fillRect(0, 0, 1, 1);
+        var rgba= spriteContext.getImageData(0, 0, 1, 1).data;
+        cachedRgbs[color]= [ rgba[0], rgba[1], rgba[2] ];
+    }
+    return cachedRgbs[color];
+}
+
+var loadImage= function( url, cb ) {
+    var image= new Image();
+    image.src= url;
+    image.onload= function() {
+        image.onload= undefined;
+        cb(image);
+    };
+}
+
+var loadSprites= function( cb ) {
+    loadImage('sprites.png', function( image ) {
+        spritesImage= image;
+        loadImage('shadows.png', function( image ) {
+            shadowsImage= image;
+            cb();
+        });
+    });
+};
+
+var cachedSpriteImages= [];
+
+var _getColoredSpriteImage= function( x, y, color, withShadow ) {
+    x *= 128;
+    y *= 128;
+
+    var width= pxTileWidth;
+    var height= pxTileHeight;
+
+    var key= x + ':' + y + ':' + width + ':' + height + ':' + color;
+    if ( !(key in cachedSpriteImages) ) {
+
+        var rgb= getRgb(color);
+
+        spriteCanvas.width= width;
+        spriteCanvas.height= width;
+        spriteContext.drawImage(spritesImage, x, y, 128, 128, 0, 0, width, height);
+        var imageData= spriteContext.getImageData(0, 0, width, height);
+        var rgba= imageData.data;
+        for ( var i= width * height * 4 - 4; i >= 0; i -= 4 ) {
+            if ( rgba[i] === 0 && rgba[i + 3] !== 0 ) {
+                rgba[i]= rgb[0];
+                rgba[i + 1]= rgb[1];
+                rgba[i + 2]= rgb[2];
+            }
+        }
+        spriteContext.putImageData(imageData, 0, 0);
+
+        if ( withShadow ) {
+            spriteContext.drawImage(shadowsImage, x, y, 128, 128, 0, 0, width, height);
+        }
+
+        var image= new Image();
+        image.src = spriteCanvas.toDataURL("image/png");
+        cachedSpriteImages[key]= image;
+    }
+
+    return cachedSpriteImages[key];
+}
+
+var getSpriteImage= function( type, color ) {
+    if ( type === KEY ) {
+        return _getColoredSpriteImage(0, 0, color, true);
+    }
+};
+
+
+// =============================================================================
 //  Draw Canvas
 // =============================================================================
 
@@ -544,7 +639,7 @@ var drawMaze= function() {
                 c_.fillStyle = 'rgb(20,100,0)';
             }
             else if ( content >= FLOOR ) {
-                c_.fillStyle = 'hsl(10,50%,' + (content - FLOOR) +'%)';
+                c_.fillStyle = 'hsl(10,50%,' + (80 - content + FLOOR) +'%)';
             }
             else {
                 c_.fillStyle = 'rgb(0,0,0)';
@@ -553,6 +648,15 @@ var drawMaze= function() {
 
             var key= (mazeX + 1) + ':' + (mazeY + 1);
             if ( key in items ) {
+
+                if ( items[key].type == KEY ) {
+
+                    var spriteImage= getSpriteImage(KEY, items[key].color);
+
+                    c.drawImage(spriteImage, 0, 0, pxTileWidth, pxTileHeight, px0, py0, px1 - px0, py1 - py0);
+                    continue;
+                }
+
                 var w= 10, h= 10;
                 if ( items[key].type == DOOR ) w= 40, h= 40; else w= 20;
                 drawRect((px0 + px1) / 2, (py0 + py1) / 2, w, h, items[key].color * 40);
@@ -590,16 +694,12 @@ var step= function( timestamp ) {
 
         lastTimestamp= timestamp;
 
-        $('#debug').html(1000 / duration);
+        if ( DEBUG ) document.getElementById('debug').innerHTML= 1000 / duration;
 
         redraw();
     }
     window.requestAnimationFrame(step);
 };
-
-window.requestAnimationFrame(step);
-
-// setInterval(genMaze, 2000);
 
 var resizeCanvas= function() {
     canvas.width= cWidth= window.innerWidth;
@@ -664,12 +764,9 @@ var wallActions= [
     [ 0, 8, 2, 1, 2, 0, 2, 3, 8, 8, 0, 9, 4, 12, 6, 0 ],        // vertical movement
 ];
 
-var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
+var direction= 0;  // horizontal movement
 
-    var pxPlayerX1;
-    var pxPlayerY1;
-    var mazeX;
-    var mazeY= Math.floor(pxPlayerY / pxTileHeight);
+var __movePlayer= function( pxPlayerX_, pxPlayerY_, result ) {
 
     var mazeX0= Math.floor((pxPlayerX_ - pxPlayerWidth / 2) / pxTileWidth);
     var mazeY0= Math.floor((pxPlayerY_ - pxPlayerHeight / 2) / pxTileHeight);
@@ -683,7 +780,7 @@ var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
 
     var walls= walls00 + walls01 + walls10 + walls11;
     if ( walls ) {
-        var action= wallActions[Math.abs(pxPlayerX1 - pxPlayerX) > Math.abs(pxPlayerY1 - pxPlayerY) ? 0 : 1][walls];
+        var action= wallActions[direction][walls];
         if ( action === 0 ) return;
 
         if ( action & 1 ) pxPlayerY_= mazeY1 * pxTileHeight + pxPlayerHeight / 2;
@@ -692,9 +789,48 @@ var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
         if ( action & 8 ) pxPlayerX_= mazeX1 * pxTileWidth + pxPlayerWidth / 2;
     }
 
-    pxPlayerX= pxPlayerX_;
-    pxPlayerY= pxPlayerY_;
-}
+    result[0]= pxPlayerX_;
+    result[1]= pxPlayerY_;
+};
+
+var pxDirectionPlayerX= 0;
+var pxDirectionPlayerY= 0;
+
+var _movePlayerResult= [ 0, 0 ];
+var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
+    __movePlayer(pxPlayerX_, pxPlayerY_, _movePlayerResult);
+    var pxPlayerX__= _movePlayerResult[0];
+    var pxPlayerY__= _movePlayerResult[1];
+
+    var mazeX= Math.floor(pxPlayerX__ / pxTileWidth);
+    var mazeY= Math.floor(pxPlayerY__ / pxTileHeight);
+
+    // TODO: items pruefen
+
+    var key= (mazeX + 1) + ':' + (mazeY + 1);
+    if ( key in items ) {
+        console.log(items[key]);
+
+        if ( items[key].type === KEY ) {
+            console.log("KEY!");
+            
+        }
+        if ( items[key].type === DOOR ) {
+            console.log("DOOR!");
+            
+        }
+    }
+
+    // FIXME: 150 abhaengig von Tile-Groesse?
+    if ( (pxDirectionPlayerX - pxPlayerX_) * (pxDirectionPlayerX - pxPlayerX_) + (pxDirectionPlayerY - pxPlayerY_) * (pxDirectionPlayerY - pxPlayerY_) > 150 ) {
+        direction= Math.abs(pxPlayerX_ - pxPlayerX) > Math.abs(pxPlayerY_ - pxPlayerY) ? 0 : 1;
+        pxDirectionPlayerX= pxPlayerX_;
+        pxDirectionPlayerY= pxPlayerY_;
+    }
+
+    pxPlayerX= pxPlayerX__;
+    pxPlayerY= pxPlayerY__;
+};
 
 var movePlayer= function( playerSpeed ) {
     if ( playerProjX === undefined ) return;
@@ -707,12 +843,14 @@ var movePlayer= function( playerSpeed ) {
 
     // Min. 20px (20^2)
     if ( dist < 400 ) {
-        if ( playerIsMoving ) {
-            var view= invProj(mouseX, mouseY);
+        if ( !playerIsMoving ) return;
 
-            // mouseX/mouseY may be out of range
-            if ( view !== undefined ) _movePlayer(view[0], view[1]);
-        }
+        var view= invProj(mouseX, mouseY);
+
+        // mouseX/mouseY may be out of range
+        if ( view === undefined ) return;
+
+        _movePlayer(view[0], view[1]);
         return;
     }
 
@@ -740,8 +878,8 @@ var moveMonster= function( monster, monsterSpeed ) {
             var mazeX1= mazeX + dirs[dir][0];
             var mazeY1= mazeY + dirs[dir][1];
             if ( maze[mazeY1 + 1][mazeX1 + 1] >= FLOOR ) {
-                monster.targetX= (mazeX1 + .5) * pxTileWidth;
-                monster.targetY= (mazeY1 + .5) * pxTileHeight;
+                monster.targetX= (mazeX1 + .5 + randomf(-.2, .2)) * pxTileWidth;
+                monster.targetY= (mazeY1 + .5 + randomf(-.3, .3)) * pxTileHeight;
                 monster.atTarget= 3;
                 return;
             }
@@ -789,19 +927,17 @@ var moveMonsters= function( monsterSpeed ) {
 //  Game Logic
 // =============================================================================
 
-var GAME_SPEED= 10;
+var GAME_SPEED= 50;
 
 var gameLogic= function() {
     movePlayer(GAME_SPEED / 3000);
-    moveMonsters(GAME_SPEED / 4000);
+    moveMonsters(GAME_SPEED / 10000);
 };
 
 
 // =============================================================================
 //  Init
 // =============================================================================
-
-setInterval(gameLogic, GAME_SPEED);
 
 var init= function() {
 
@@ -819,11 +955,13 @@ var init= function() {
     window.addEventListener('mousemove', onMouseMove, false);
     window.addEventListener('touchend', onMouseUp, false);
     window.addEventListener('mouseup', onMouseUp, false);
+
+    window.requestAnimationFrame(step);
+    setInterval(gameLogic, GAME_SPEED);
 };
 
-$(function() {
-    init();
-
+window.addEventListener('load', function() {
+    loadSprites(init);
 });
 
 })();
