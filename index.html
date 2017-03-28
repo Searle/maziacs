@@ -47,7 +47,6 @@ var maze= [];
 var mazeWidth= 7;
 var mazeHeight= 7;
 
-var dists;
 var items;
 
 var pxMazeWidth;
@@ -59,6 +58,7 @@ var playerMazeX;
 var playerMazeY;
 var playerKey;          // Maze x/y heading(!!) position. may not be actual position
 var playerItems= [];    // Items the player holds
+// var playerDists;
 
 var monsters;
 
@@ -160,13 +160,22 @@ var calcDistances= function( startPosX, startPosY ) {
     };
 };
 
+var updateMazeFloor= function( dists ) {
+
+    // Set maze floor data
+    for ( var key in dists.lookup ) {
+        var pos= dists.lookup[key];
+        maze[pos[1]][pos[0]]= FLOOR + pos[2];
+    }
+}
+
 
 // =============================================================================
 //  Generate new maze
 // =============================================================================
 
 // Generate Doors & Keys
-var genItems= function() {
+var genItems= function( dists ) {
     items= {};
 
     var lookup= dists.lookup;
@@ -269,6 +278,7 @@ var genMonsters= function() {
         projX: 0,
         prosY: 0,
         atTarget: 0,
+        steps: [],
     };
 
     monsters.push(monster);
@@ -365,8 +375,8 @@ var genMaze= function() {
 
 
     // Find most distant cell
-    var dists_= calcDistances(1,1);
-    var startPos= dists_.lookup[dists_.maxDistanceKey];
+    var dists= calcDistances(1,1);
+    var startPos= dists.lookup[dists.maxDistanceKey];
 
     // Take the most distant cell and recalculate distances
     dists= calcDistances(startPos[0], startPos[1]);
@@ -374,16 +384,12 @@ var genMaze= function() {
 // console.log(startPos);
 // console.table(dists.byDistance);
 
-    // Set maze floor data
-    for ( var key in dists.lookup ) {
-        var pos= dists.lookup[key];
-        maze[pos[1]][pos[0]]= FLOOR + pos[2];
-    }
+    updateMazeFloor(dists);
 
     pxPlayerX= (startPos[0] - .5) * pxTileWidth;
     pxPlayerY= (startPos[1] - .5) * pxTileHeight;
 
-    genItems();
+    genItems(dists);
     genMonsters();
 
     // console.table(maze);
@@ -878,13 +884,9 @@ var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
     if ( playerMazeX !== playerMazeX__ || playerMazeY !== playerMazeY__ ) {
         playerMazeX= playerMazeX__;
         playerMazeY= playerMazeY__;
-        var dists= calcDistances(playerMazeX + 1, playerMazeY + 1);
+        var playerDists= calcDistances(playerMazeX + 1, playerMazeY + 1);
 
-        // Set maze floor data
-        for ( var key in dists.lookup ) {
-            var pos= dists.lookup[key];
-            maze[pos[1]][pos[0]]= pos[2];
-        }
+        updateMazeFloor(playerDists);
     }
 };
 
@@ -923,17 +925,44 @@ var movePlayer= function( playerSpeed ) {
 // =============================================================================
 
 var targetSpider= function( monster, mazeX, mazeY ) {
-    var dir= random(0, 4);
-    for ( var i= 0; i < 4; i++ ) {
-        var mazeX1= mazeX + dirs[dir][0];
-        var mazeY1= mazeY + dirs[dir][1];
-        if ( maze[mazeY1 + 1][mazeX1 + 1] >= FLOOR ) {
-            monster.targetX= (mazeX1 + .5 + randomf(-.2, .2)) * pxTileWidth;
-            monster.targetY= (mazeY1 + .5 + randomf(-.3, .3)) * pxTileHeight;
-            monster.atTarget= 3;
-            return;
+    var mazeX_;
+    var mazeY_;
+
+    if ( monster.steps.length == 0 ) {
+        mazeX_= mazeX;
+        mazeY_= mazeY;
+        var content_= maze[mazeY_ + 1][mazeX_ + 1];
+        var toPlayer= random(0, 4);
+        var stepCount= random(1, 7);
+        for ( var step= 0; step < stepCount; step++ ) {
+            var dir= random(0, 4);
+            for ( var i= 0; i < 4; i++ ) {
+                var mazeX__= mazeX_ + dirs[dir][0];
+                var mazeY__= mazeY_ + dirs[dir][1];
+                var content__= maze[mazeY__ + 1][mazeX__ + 1];
+                if ( content__ >= FLOOR && ((toPlayer > 0 && content__ < content_) || (toPlayer === 0 && content__ > content_)) ) {
+                    mazeX_= mazeX__;
+                    mazeY_= mazeY__;
+                    content_= content__;
+                    monster.steps.push([ mazeX_, mazeY_ ]);
+                    break;
+                }
+                dir= (dir + 1) & 3;
+            }
+            if ( i >= 4 ) break;  // Give up
         }
-        dir= (dir + 1) & 3;
+    }
+
+    if ( monster.steps.length ) {
+        var pos= monster.steps.shift();
+        mazeX_= pos[0];
+        mazeY_= pos[1];
+
+        if ( mazeX_ !== mazeX || mazeY_ !== mazeY ) {
+            monster.targetX= (mazeX_ + .5 + randomf(-.2, .2)) * pxTileWidth;
+            monster.targetY= (mazeY_ + .5 + randomf(-.3, .3)) * pxTileHeight;
+            monster.atTarget= 3;
+        }
     }
 };
 
