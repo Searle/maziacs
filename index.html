@@ -55,7 +55,9 @@ var pxMazeHeight;
 
 var pxPlayerX;
 var pxPlayerY;
-var playerKey;          // Maze x/y position
+var playerMazeX;
+var playerMazeY;
+var playerKey;          // Maze x/y heading(!!) position. may not be actual position
 var playerItems= [];    // Items the player holds
 
 var monsters;
@@ -71,13 +73,13 @@ var pxPlayerHeight= 20;
 var borderX= 2;
 var borderY= 2;
 
+var SPIDER= -6;
 var DOOR= -5;
 var KEY= -4;
 var CALC= -3;
 var FRAME= -2;
 var WALL= -1;
 var FLOOR= 0;
-var FLOOR_CALC= 0;
 
 var dirs= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
 
@@ -119,7 +121,7 @@ var calcDistances= function( startPosX, startPosY ) {
         for ( var dir= 0; dir < 4; dir++ ) {
             var nextPosX= posX + dirs[dir][0];
             var nextPosY= posY + dirs[dir][1];
-            if ( maze[nextPosY][nextPosX] < FLOOR_CALC ) continue;
+            if ( maze[nextPosY][nextPosX] < FLOOR ) continue;
 
             var nextKey= nextPosX + ':' + nextPosY;
             if ( nextKey in lookup ) continue;
@@ -261,6 +263,7 @@ var genMonsters= function() {
     monsters= [];
 
     var monster= {
+        type: SPIDER,
         x: pxPlayerX,
         y: pxPlayerY,
         projX: 0,
@@ -301,7 +304,7 @@ var genMaze= function() {
 
     // Slow, horrible and naive. Ok for now...
 
-    var floor= FLOOR_CALC;
+    var floor= FLOOR;
 
     while ( true ) {
 
@@ -327,7 +330,7 @@ var genMaze= function() {
                 var dir= random(0, 4);
 
                 // IDEE: bei i == 3 bzw == 2 werden wirds wiggliger
-                var i_max= floor === FLOOR_CALC ? 4 : 2;
+                var i_max= floor === FLOOR ? 4 : 2;
                 for ( var i= 0; i < i_max; i++ ) {
                     var wallPosX= posX + dirs[dir][0];
                     var wallPosY= posY + dirs[dir][1];
@@ -343,7 +346,7 @@ var genMaze= function() {
                     }
                     dir= (dir + 1) & 3;
                 }
-                if ( i >= i_max && floor > FLOOR_CALC ) {
+                if ( i >= i_max && floor > FLOOR ) {
                     for ( var y= 1; y <= mazeHeight; y += 2 ) {
                         for ( var x= 1; x <= mazeWidth; x += 2 ) {
                             if ( maze[y][x] === floor ) maze[y][x]= CALC;
@@ -501,18 +504,6 @@ var calcProjs= function() {
         mazeSize: mazeHeight,
     });
 
-/*
-    var mazeX= Math.floor(pxPlayerX / pxTileWidth);
-    var mazeY= Math.floor(pxPlayerY / pxTileHeight);
-    var dists= calcDistances(mazeX + 1, mazeY + 1);
-
-    // Set maze floor data
-    for ( var key in dists.lookup ) {
-        var pos= dists.lookup[key];
-        maze[pos[1]][pos[0]]= pos[2];
-    }
-*/
-
     var playerProj= proj(pxPlayerX, pxPlayerY);
     playerProjX= playerProj[0];
     playerProjY= playerProj[1];
@@ -653,7 +644,7 @@ var drawMaze= function() {
                 c_.fillStyle = 'rgb(20,100,0)';
             }
             else if ( content >= FLOOR ) {
-                c_.fillStyle = 'hsl(10,50%,' + (80 - content + FLOOR) +'%)';
+                c_.fillStyle = 'hsl(10,50%,' + (80 - content * 2 + FLOOR) +'%)';
             }
             else {
                 c_.fillStyle = 'rgb(0,0,0)';
@@ -841,11 +832,11 @@ var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
     var pxPlayerX__= _movePlayerResult[0];
     var pxPlayerY__= _movePlayerResult[1];
 
-    var mazeX= Math.floor(pxPlayerX__ / pxTileWidth);
-    var mazeY= Math.floor(pxPlayerY__ / pxTileHeight);
+    var playerMazeX__= Math.floor(pxPlayerX__ / pxTileWidth);
+    var playerMazeY__= Math.floor(pxPlayerY__ / pxTileHeight);
 
     // Check for item collision
-    var playerKey__= (mazeX + 1) + ':' + (mazeY + 1);
+    var playerKey__= (playerMazeX__ + 1) + ':' + (playerMazeY__ + 1);
     if ( playerKey__ in items ) {
         if ( items[playerKey__].type === KEY ) {
             playerItems.push(items[playerKey__]);
@@ -883,6 +874,18 @@ var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
     pxPlayerX= pxPlayerX__;
     pxPlayerY= pxPlayerY__;
     playerKey= playerKey__;
+
+    if ( playerMazeX !== playerMazeX__ || playerMazeY !== playerMazeY__ ) {
+        playerMazeX= playerMazeX__;
+        playerMazeY= playerMazeY__;
+        var dists= calcDistances(playerMazeX + 1, playerMazeY + 1);
+
+        // Set maze floor data
+        for ( var key in dists.lookup ) {
+            var pos= dists.lookup[key];
+            maze[pos[1]][pos[0]]= pos[2];
+        }
+    }
 };
 
 var movePlayer= function( playerSpeed ) {
@@ -919,6 +922,21 @@ var movePlayer= function( playerSpeed ) {
 //  Move monsters
 // =============================================================================
 
+var targetSpider= function( monster, mazeX, mazeY ) {
+    var dir= random(0, 4);
+    for ( var i= 0; i < 4; i++ ) {
+        var mazeX1= mazeX + dirs[dir][0];
+        var mazeY1= mazeY + dirs[dir][1];
+        if ( maze[mazeY1 + 1][mazeX1 + 1] >= FLOOR ) {
+            monster.targetX= (mazeX1 + .5 + randomf(-.2, .2)) * pxTileWidth;
+            monster.targetY= (mazeY1 + .5 + randomf(-.3, .3)) * pxTileHeight;
+            monster.atTarget= 3;
+            return;
+        }
+        dir= (dir + 1) & 3;
+    }
+};
+
 var moveMonster= function( monster, monsterSpeed ) {
 
 // console.log(monster);
@@ -926,26 +944,13 @@ var moveMonster= function( monster, monsterSpeed ) {
     if ( monster.atTarget === 0 ) {
         var mazeX= Math.floor(monster.x / pxTileWidth);
         var mazeY= Math.floor(monster.y / pxTileHeight);
-        var dir= random(0, 4);
-        for ( var i= 0; i < 4; i++ ) {
-            var mazeX1= mazeX + dirs[dir][0];
-            var mazeY1= mazeY + dirs[dir][1];
-            if ( maze[mazeY1 + 1][mazeX1 + 1] >= FLOOR ) {
-                monster.targetX= (mazeX1 + .5 + randomf(-.2, .2)) * pxTileWidth;
-                monster.targetY= (mazeY1 + .5 + randomf(-.3, .3)) * pxTileHeight;
-                monster.atTarget= 3;
-                return;
-            }
-            dir= (dir + 1) & 3;
+        if ( monster.type === SPIDER ) {
+            return targetSpider(monster, mazeX, mazeY);
         }
-
-        // Monster is stuck!
         return;
     }
 
     var alpha= Math.atan2(monster.targetX - monster.x, monster.targetY - monster.y);
-
-// console.log(dx, dy);
 
     if ( monster.atTarget & 1 ) {
         var dx= Math.sin(alpha) * cWidth * monsterSpeed;
