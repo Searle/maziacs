@@ -733,7 +733,14 @@ var drawPlayer= function() {
         }
     }
 
-    drawImage(PLAYER, imageX, imageY, pxPlayerImageWidth, pxPlayerImageHeight, playerProjX, playerProjY, pxPlayerWidth, pxPlayerHeight);
+    var x= playerProjX;
+    if ( playerKey in items && items[playerKey].type == DOOR && items[playerKey].opening == 0 ) {
+        imageX= 3;
+        imageY= 2;
+        x += random(-4, 4);
+    }
+
+    drawImage(PLAYER, imageX, imageY, pxPlayerImageWidth, pxPlayerImageHeight, x, playerProjY, pxPlayerWidth, pxPlayerHeight);
 };
 
 var drawMonsters= function() {
