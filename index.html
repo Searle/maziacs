@@ -26,14 +26,16 @@
     }
 </style>
 
-<Xscript src="sprint-master/sprint.js"></Xscript>
-
 <script>
 (function() {
 
 "use strict";
 
 var DEBUG= true;
+
+var even= function( f ) {
+    return f & ~1;
+}
 
 var mouseX;
 var mouseY;
@@ -58,7 +60,10 @@ var playerMazeX;
 var playerMazeY;
 var playerKey;          // Maze x/y heading(!!) position. may not be actual position
 var playerItems= [];    // Items the player holds
-// var playerDists;
+var playerIsMoving;
+var playerMovementX;
+var playerMovementY;
+// var playerMovement= 0;
 
 var monsters;
 
@@ -67,8 +72,11 @@ var pxTileHeight= 48;
 var pxTileWidth2= pxTileWidth / 2;
 var pxTileHeight2= pxTileHeight / 2;
 
-var pxPlayerWidth= 20;
-var pxPlayerHeight= 20;
+var pxPlayerWidth= even(pxTileWidth * .6);
+var pxPlayerHeight= even(pxTileHeight * .8);
+
+var pxPlayerImageWidth= 60;
+var pxPlayerImageHeight= 60;
 
 var borderX= 2;
 var borderY= 2;
@@ -538,11 +546,21 @@ var calcProjs= function() {
 //  Sprites
 // =============================================================================
 
-var spritesImage;
-var shadowsImage;
+var TILES= 0;
+var TILE_SHADOWS= 1;
+var PLAYER= 2;
+var SPRITE_IMAGE_COUNT= 3;
+
+var imageFiles= [
+    'sprites.png', 'shadows.png', 'player.png'
+];
+var imageSizes= [
+    128, 128, 64
+];
+
+var images= [];
+
 var spriteCanvas= document.createElement('canvas');
-// spriteCanvas.width= 128;
-// spriteCanvas.height= 128;
 var spriteContext= spriteCanvas.getContext('2d');
 
 var cachedRgbs= [];
@@ -567,31 +585,34 @@ var loadImage= function( url, cb ) {
 }
 
 var loadSprites= function( cb ) {
-    loadImage('sprites.png', function( image ) {
-        spritesImage= image;
-        loadImage('shadows.png', function( image ) {
-            shadowsImage= image;
-            cb();
+    if ( images.length < SPRITE_IMAGE_COUNT ) {
+        loadImage(imageFiles[images.length], function( image ) {
+            images.push(image);
+            loadSprites(cb);
         });
-    });
-};
+        return;
+    }
+    cb();
+}
 
-var cachedSpriteImages= [];
+var cachedImages= [];
 
-var _getSpriteImage= function( x, y, width, height, color, withShadow ) {
+var _getImage= function( imageIndex, x, y, width, height, color, withShadow ) {
+
+    var image= images[imageIndex];
 
     if ( width === undefined ) width= pxTileWidth;
     if ( height === undefined ) height= pxTileHeight;
 
     var key= x + ':' + y + ':' + width + ':' + height + ':' + color;
-    if ( !(key in cachedSpriteImages) ) {
+    if ( !(key in cachedImages) ) {
 
-        x *= 128;
-        y *= 128;
+        x *= imageSizes[imageIndex];
+        y *= imageSizes[imageIndex];
 
         spriteCanvas.width= width;
         spriteCanvas.height= width;
-        spriteContext.drawImage(spritesImage, x, y, 128, 128, 0, 0, width, height);
+        spriteContext.drawImage(image, x, y, imageSizes[imageIndex], imageSizes[imageIndex], 0, 0, width, height);
 
         if ( color !== undefined ) {
             var imageData= spriteContext.getImageData(0, 0, width, height);
@@ -608,29 +629,29 @@ var _getSpriteImage= function( x, y, width, height, color, withShadow ) {
         }
 
         if ( withShadow ) {
-            spriteContext.drawImage(shadowsImage, x, y, 128, 128, 0, 0, width, height);
+            spriteContext.drawImage(images[imageIndex + 1], x, y, imageSizes[imageIndex], imageSizes[imageIndex], 0, 0, width, height);
         }
 
         var image= new Image();
         image.src = spriteCanvas.toDataURL("image/png");
-        cachedSpriteImages[key]= image;
+        cachedImages[key]= image;
     }
 
-    return cachedSpriteImages[key];
+    return cachedImages[key];
 }
 
-var getImage= function( x, y, width, height ) {
-    return _getSpriteImage(x, y, width, height, undefined, false);
+var getImage= function( imageIndex, x, y, width, height ) {
+    return _getImage(imageIndex, x, y, width, height, undefined, false);
 }
 
 var getItemImage= function( item, width, height ) {
     if ( item.type === KEY ) {
-        return _getSpriteImage(0, 0, width, height, item.color, true);
+        return _getImage(TILES, 0, 0, width, height, item.color, true);
     }
     if ( item.type === DOOR ) {
         if ( item.opening < 0 ) return;
 
-        return _getSpriteImage(Math.floor(item.opening), 1, width, height, item.color, true);
+        return _getImage(TILES, Math.floor(item.opening), 1, width, height, item.color, true);
     }
 };
 
@@ -678,7 +699,7 @@ var drawMaze= function() {
                         c.drawImage(itemImage, 0, 0, pxTileWidth, pxTileHeight, px0, py0, px1 - px0, py1 - py0);
                     }
                     if ( key == playerKey && items[key].type == DOOR && items[key].opening == 0 ) {
-                        var lightningImage= getImage(Math.floor(items[key].lightning), 2);
+                        var lightningImage= getImage(TILES, Math.floor(items[key].lightning), 2);
                         var yOfs= random(-2, 2);
                         c.drawImage(lightningImage, 0, 0, pxTileWidth, pxTileHeight, px0, py0 + yOfs, px1 - px0, py1 - py0 + yOfs);
                     }
@@ -693,8 +714,26 @@ var drawMaze= function() {
     }
 }
 
+var drawImage= function( imageIndex, imageX, imageY, imageWidth, imageHeight, x, y, width, height ) {
+    var image= getImage(PLAYER, imageX, imageY, imageWidth, imageHeight);
+    c.drawImage(image, 0, 0, imageWidth, imageHeight, x - imageWidth / 2, y + height / 2 - imageHeight - 2, imageWidth, imageHeight);
+}
+
 var drawPlayer= function() {
-    drawRect(playerProjX, playerProjY, pxPlayerWidth, pxPlayerHeight, 20);
+    var imageX= 0;
+    var imageY= 10;
+    if ( playerIsMoving ) {
+        // imageX= playerMovement % 8 + 1;
+        imageX= Math.floor((pxPlayerX + pxPlayerY) * .3) % 8 + 1;
+        if ( Math.abs(playerMovementX) > Math.abs(playerMovementY) ) {
+            imageY= playerMovementX < 0 ? 9 : 11;
+        }
+        else {
+            imageY= playerMovementY < 0 ? 8 : 10;
+        }
+    }
+
+    drawImage(PLAYER, imageX, imageY, pxPlayerImageWidth, pxPlayerImageHeight, playerProjX, playerProjY, pxPlayerWidth, pxPlayerHeight);
 };
 
 var drawMonsters= function() {
@@ -712,7 +751,7 @@ var drawPlayerItems= function() {
     var dx= width + 10;
 
     for ( var i= 0; i < playerItems.length; i++ ) {
-        var inventoryImage= getImage(2, 0, width, height);
+        var inventoryImage= getImage(TILES, 2, 0, width, height);
         c.drawImage(inventoryImage, 0, 0, width, height, x, 10, width, height);
         var itemImage= getItemImage(playerItems[i], width, height);
         if ( itemImage ) {
@@ -764,7 +803,6 @@ var MOUSE_CLICK_DELAY= 300;
 
 var mousePress;
 var mousePressTimestamp;
-var playerIsMoving;
 
 var onMouseMove= function( e ) {
     if ( e.changedTouches && e.changedTouches.length > 0 ) {
@@ -788,6 +826,7 @@ var onMouseUp= function( e ) {
         // click;
     }
     mousePressTimestamp= undefined;
+    playerIsMoving= undefined;
     if ( e.cancelable ) e.preventDefault();
 };
 
@@ -883,7 +922,7 @@ var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
     }
 
     // FIXME: 150 abhaengig von Tile-Groesse?
-    if ( (pxDirectionPlayerX - pxPlayerX_) * (pxDirectionPlayerX - pxPlayerX_) + (pxDirectionPlayerY - pxPlayerY_) * (pxDirectionPlayerY - pxPlayerY_) > 150 ) {
+    if ( (pxDirectionPlayerX - pxPlayerX_) * (pxDirectionPlayerX - pxPlayerX_) + (pxDirectionPlayerY - pxPlayerY_) * (pxDirectionPlayerY - pxPlayerY_) > 250 ) {
         direction= Math.abs(pxPlayerX_ - pxPlayerX) > Math.abs(pxPlayerY_ - pxPlayerY) ? 0 : 1;
         pxDirectionPlayerX= pxPlayerX_;
         pxDirectionPlayerY= pxPlayerY_;
@@ -894,6 +933,10 @@ var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
     playerKey= playerKey__;
 
     if ( playerMazeX !== playerMazeX__ || playerMazeY !== playerMazeY__ ) {
+
+        playerMovementX= playerMazeX__ - playerMazeX;
+        playerMovementY= playerMazeY__ - playerMazeY;
+
         playerMazeX= playerMazeX__;
         playerMazeY= playerMazeY__;
         var playerDists= calcDistances(playerMazeX + 1, playerMazeY + 1);
@@ -910,6 +953,8 @@ var movePlayer= function( playerSpeed ) {
     var dx= mouseX - playerProjX;
     var dy= mouseY - playerProjY;
     var dist= dx * dx + dy * dy;
+
+    // playerMovement++;
 
     // Min. 20px (20^2)
     if ( dist < 400 ) {
@@ -1040,7 +1085,7 @@ var moveItems= function( itemSpeed ) {
 //  Game Logic
 // =============================================================================
 
-var TICKS_PER_SECOND= 50;
+var TICKS_PER_SECOND= 20;
 
 var gameLogic= function() {
     moveItems(TICKS_PER_SECOND / 80);
