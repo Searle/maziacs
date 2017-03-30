@@ -292,14 +292,19 @@ var genItems= function( dists ) {
     // console.table(solution);
 };
 
-var genMonsters= function() {
+var genMonsters= function( dists ) {
+    var lookup= dists.lookup;
 
     monsters= [];
 
-    var monster= initCharacter(SPIDER);
-    monster.pxX= player.pxX;
-    monster.pxY= player.pxY;
-    monsters.push(monster);
+    for ( var key in items ) {
+        if ( items[key].type === KEY ) {
+            var monster= initCharacter(SPIDER);
+            monster.pxX= (lookup[key][0] - .5) * pxTileSize;
+            monster.pxY= (lookup[key][1] - .5) * pxTileSize;
+            monsters.push(monster);
+        }
+    };
 
     var monster= initCharacter(SPIDER);
     monster.pxX= player.pxX;
@@ -309,8 +314,8 @@ var genMonsters= function() {
 
 var genMaze= function() {
 
-    pxMazeWidth= pxTileSize * mazeWidth;
-    pxMazeHeight= pxTileSize * mazeHeight;
+    pxMazeWidth= mazeWidth * pxTileSize;
+    pxMazeHeight= mazeHeight * pxTileSize;
 
     maze= [];
     for ( var y= 0; y <= mazeHeight + 1; y++ ) {
@@ -414,7 +419,7 @@ var genMaze= function() {
     player.pxY= (startPos[1] - .5) * pxTileSize;
 
     genItems(dists);
-    genMonsters();
+    genMonsters(dists);
 
     // console.table(maze);
 };
@@ -720,7 +725,7 @@ var drawCharacter= function( ch ) {
     var imageX= 0;
     var imageY= 10;
     if ( ch.isMoving ) {
-        imageX= Math.floor((ch.pxX + ch.pxY) * .3) % 8 + 1;
+        imageX= Math.floor(ch.pxX * .3 + ch.pxY * .5) % 8 + 1;
         if ( Math.abs(ch.movementX) > Math.abs(ch.movementY) ) {
             imageY= ch.movementX < 0 ? 9 : 11;
         }
@@ -969,8 +974,10 @@ var movePlayer= function( playerSpeed ) {
     var dy= mouseY - player.projY;
     var dist= dx * dx + dy * dy;
 
-    // Min. 20px (20^2)
-    if ( dist < 400 ) {
+    // FIXME: Kann einmal ausgerechnet werden
+    var limit= playerSpeed * playerSpeed + playerSpeed * playerSpeed;
+
+    if ( dist < limit ) {
         if ( !player.isMoving ) return;
 
         var view= invProj(mouseX, mouseY);
@@ -985,8 +992,8 @@ var movePlayer= function( playerSpeed ) {
     player.isMoving= true;
 
     var alpha= Math.atan2(dx, dy);
-    _movePlayer(player.pxX + Math.sin(alpha) * cWidth * playerSpeed,
-                player.pxY + Math.cos(alpha) * cHeight * playerSpeed);
+    _movePlayer(player.pxX + Math.sin(alpha) * playerSpeed,
+                player.pxY + Math.cos(alpha) * playerSpeed);
 };
 
 
@@ -1056,7 +1063,7 @@ var moveMonster= function( monster, monsterSpeed ) {
     monster.isMoving= false;
 
     if ( monster.atTarget & 1 ) {
-        var dx= Math.sin(alpha) * cWidth * monsterSpeed;
+        var dx= Math.sin(alpha) * monsterSpeed;
         if ( Math.abs(monster.pxX + dx - monster.targetX) <= dx ) {
             monster.x= monster.targetX;
             monster.atTarget &= ~1;
@@ -1068,7 +1075,7 @@ var moveMonster= function( monster, monsterSpeed ) {
         }
     }
     if ( monster.atTarget & 2 ) {
-        var dy= Math.cos(alpha) * cHeight * monsterSpeed;
+        var dy= Math.cos(alpha) * monsterSpeed;
         if ( Math.abs(monster.pxY + dy - monster.targetY) <= dy ) {
             monster.pxY= monster.targetY;
             monster.atTarget &= ~2;
@@ -1110,8 +1117,8 @@ var TICKS_PER_SECOND= 20;
 
 var gameLogic= function() {
     moveItems(TICKS_PER_SECOND / 80);
-    movePlayer(TICKS_PER_SECOND / 3000);
-    moveMonsters(TICKS_PER_SECOND / 10000);
+    movePlayer(TICKS_PER_SECOND / 10);
+    moveMonsters(TICKS_PER_SECOND / 15);
 };
 
 
