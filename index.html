@@ -54,29 +54,30 @@ var items;
 var pxMazeWidth;
 var pxMazeHeight;
 
-var pxPlayerX;
-var pxPlayerY;
-var playerMazeX;
-var playerMazeY;
-var playerKey;          // Maze x/y heading(!!) position. may not be actual position
-var playerItems= [];    // Items the player holds
-var playerIsMoving;
-var playerMovementX;
-var playerMovementY;
-// var playerMovement= 0;
-
-var monsters;
-
 var pxTileWidth= 48;
 var pxTileHeight= 48;
 var pxTileWidth2= pxTileWidth / 2;
 var pxTileHeight2= pxTileHeight / 2;
 
-var pxPlayerWidth= even(pxTileWidth * .6);
-var pxPlayerHeight= even(pxTileHeight * .8);
+var Player= function() {
+    this.pxX= undefined;
+    this.pxY= undefined;
+    this.mazeX= undefined;
+    this.mazeY= undefined;
+    this.toKey= undefined;    // Maze x/y heading(!!) position. may not be actual position
+    this.items= [];    // Items the player holds
+    this.isMoving= undefined;
+    this.movementX= undefined;
+    this.movementY= undefined;
+    this.pxWidth= even(pxTileWidth * .6);
+    this.pxHeight= even(pxTileHeight * .8);
+    this.pxImageWidth= 60;
+    this.pxImageHeight= 60;
+}
 
-var pxPlayerImageWidth= 60;
-var pxPlayerImageHeight= 60;
+var player= new Player();
+
+var monsters;
 
 var borderX= 2;
 var borderY= 2;
@@ -293,8 +294,8 @@ var genMonsters= function() {
 
     var monster= {
         type: SPIDER,
-        x: pxPlayerX,
-        y: pxPlayerY,
+        x: player.pxX,
+        y: player.pxY,
         projX: 0,
         prosY: 0,
         atTarget: 0,
@@ -406,8 +407,8 @@ var genMaze= function() {
 
     updateMazeFloor(dists);
 
-    pxPlayerX= (startPos[0] - .5) * pxTileWidth;
-    pxPlayerY= (startPos[1] - .5) * pxTileHeight;
+    player.pxX= (startPos[0] - .5) * pxTileWidth;
+    player.pxY= (startPos[1] - .5) * pxTileHeight;
 
     genItems(dists);
     genMonsters();
@@ -516,21 +517,21 @@ var invProj= function( x, y ) {
 
 var calcProjs= function() {
 
-    calcTileProj(pxPlayerX, projX, {
+    calcTileProj(player.pxX, projX, {
         pxTargetSize: cWidth,
         pxTileSize: pxTileWidth,
         border: borderX,
         mazeSize: mazeWidth,
     });
 
-    calcTileProj(pxPlayerY, projY, {
+    calcTileProj(player.pxY, projY, {
         pxTargetSize: cHeight,
         pxTileSize: pxTileHeight,
         border: borderY,
         mazeSize: mazeHeight,
     });
 
-    var playerProj= proj(pxPlayerX, pxPlayerY);
+    var playerProj= proj(player.pxX, player.pxY);
     playerProjX= playerProj[0];
     playerProjY= playerProj[1];
 
@@ -698,7 +699,7 @@ var drawMaze= function() {
                     if ( itemImage ) {
                         c.drawImage(itemImage, 0, 0, pxTileWidth, pxTileHeight, px0, py0, px1 - px0, py1 - py0);
                     }
-                    if ( key == playerKey && items[key].type == DOOR && items[key].opening == 0 ) {
+                    if ( key == player.toKey && items[key].type == DOOR && items[key].opening == 0 ) {
                         var lightningImage= getImage(TILES, Math.floor(items[key].lightning), 2);
                         var yOfs= random(-2, 2);
                         c.drawImage(lightningImage, 0, 0, pxTileWidth, pxTileHeight, px0, py0 + yOfs, px1 - px0, py1 - py0 + yOfs);
@@ -722,25 +723,24 @@ var drawImage= function( imageIndex, imageX, imageY, imageWidth, imageHeight, x,
 var drawPlayer= function() {
     var imageX= 0;
     var imageY= 10;
-    if ( playerIsMoving ) {
-        // imageX= playerMovement % 8 + 1;
-        imageX= Math.floor((pxPlayerX + pxPlayerY) * .3) % 8 + 1;
-        if ( Math.abs(playerMovementX) > Math.abs(playerMovementY) ) {
-            imageY= playerMovementX < 0 ? 9 : 11;
+    if ( player.isMoving ) {
+        imageX= Math.floor((player.pxX + player.pxY) * .3) % 8 + 1;
+        if ( Math.abs(player.movementX) > Math.abs(player.movementY) ) {
+            imageY= player.movementX < 0 ? 9 : 11;
         }
         else {
-            imageY= playerMovementY < 0 ? 8 : 10;
+            imageY= player.movementY < 0 ? 8 : 10;
         }
     }
 
     var x= playerProjX;
-    if ( playerKey in items && items[playerKey].type == DOOR && items[playerKey].opening == 0 ) {
+    if ( player.toKey in items && items[player.toKey].type == DOOR && items[player.toKey].opening == 0 ) {
         imageX= 3;
         imageY= 2;
         x += random(-4, 4);
     }
 
-    drawImage(PLAYER, imageX, imageY, pxPlayerImageWidth, pxPlayerImageHeight, x, playerProjY, pxPlayerWidth, pxPlayerHeight);
+    drawImage(PLAYER, imageX, imageY, player.pxImageWidth, player.pxImageHeight, x, playerProjY, player.pxWidth, player.pxHeight);
 };
 
 var drawMonsters= function() {
@@ -757,10 +757,10 @@ var drawPlayerItems= function() {
     var x= 10;
     var dx= width + 10;
 
-    for ( var i= 0; i < playerItems.length; i++ ) {
+    for ( var i= 0; i < player.items.length; i++ ) {
         var inventoryImage= getImage(TILES, 2, 0, width, height);
         c.drawImage(inventoryImage, 0, 0, width, height, x, 10, width, height);
-        var itemImage= getItemImage(playerItems[i], width, height);
+        var itemImage= getItemImage(player.items[i], width, height);
         if ( itemImage ) {
             c.drawImage(itemImage, 0, 0, width, height, x, 10, width, height);
         }
@@ -824,7 +824,7 @@ var onMouseMove= function( e ) {
 var onMouseDown= function( e ) {
     onMouseMove(e);
     mousePressTimestamp= e.timeStamp;
-    playerIsMoving= undefined;
+    player.isMoving= undefined;
 }
 
 var onMouseUp= function( e ) {
@@ -833,7 +833,7 @@ var onMouseUp= function( e ) {
         // click;
     }
     mousePressTimestamp= undefined;
-    playerIsMoving= undefined;
+    player.isMoving= undefined;
     if ( e.cancelable ) e.preventDefault();
 };
 
@@ -860,12 +860,12 @@ var wallActions= [
 
 var direction= 0;  // horizontal movement
 
-var __movePlayer= function( pxPlayerX_, pxPlayerY_, result ) {
+var __movePlayer= function( pxX_, pxY_, result ) {
 
-    var mazeX0= Math.floor((pxPlayerX_ - pxPlayerWidth / 2) / pxTileWidth);
-    var mazeY0= Math.floor((pxPlayerY_ - pxPlayerHeight / 2) / pxTileHeight);
-    var mazeX1= Math.floor((pxPlayerX_ + pxPlayerWidth / 2) / pxTileWidth);
-    var mazeY1= Math.floor((pxPlayerY_ + pxPlayerHeight / 2) / pxTileHeight);
+    var mazeX0= Math.floor((pxX_ - player.pxWidth / 2) / pxTileWidth);
+    var mazeY0= Math.floor((pxY_ - player.pxHeight / 2) / pxTileHeight);
+    var mazeX1= Math.floor((pxX_ + player.pxWidth / 2) / pxTileWidth);
+    var mazeY1= Math.floor((pxY_ + player.pxHeight / 2) / pxTileHeight);
 
     var walls00= maze[mazeY0 + 1][mazeX0 + 1] < FLOOR ? 1 : 0;
     var walls01= maze[mazeY0 + 1][mazeX1 + 1] < FLOOR ? 2 : 0;
@@ -877,78 +877,74 @@ var __movePlayer= function( pxPlayerX_, pxPlayerY_, result ) {
         var action= wallActions[direction][walls];
         if ( action === 0 ) return;
 
-        if ( action & 1 ) pxPlayerY_= mazeY1 * pxTileHeight + pxPlayerHeight / 2;
-        if ( action & 2 ) pxPlayerX_= mazeX0 * pxTileWidth + pxTileWidth - pxPlayerWidth / 2;
-        if ( action & 4 ) pxPlayerY_= mazeY0 * pxTileHeight + pxTileHeight - pxPlayerHeight / 2;
-        if ( action & 8 ) pxPlayerX_= mazeX1 * pxTileWidth + pxPlayerWidth / 2;
+        if ( action & 1 ) pxY_= mazeY1 * pxTileHeight + player.pxHeight / 2;
+        if ( action & 2 ) pxX_= mazeX0 * pxTileWidth + pxTileWidth - player.pxWidth / 2;
+        if ( action & 4 ) pxY_= mazeY0 * pxTileHeight + pxTileHeight - player.pxHeight / 2;
+        if ( action & 8 ) pxX_= mazeX1 * pxTileWidth + player.pxWidth / 2;
     }
 
-    result[0]= pxPlayerX_;
-    result[1]= pxPlayerY_;
+    result[0]= pxX_;
+    result[1]= pxY_;
 };
 
 var pxDirectionPlayerX= 0;
 var pxDirectionPlayerY= 0;
 
 var _movePlayerResult= [ 0, 0 ];
-var _movePlayer= function( pxPlayerX_, pxPlayerY_ ) {
-    __movePlayer(pxPlayerX_, pxPlayerY_, _movePlayerResult);
-    var pxPlayerX__= _movePlayerResult[0];
-    var pxPlayerY__= _movePlayerResult[1];
+var _movePlayer= function( pxX, pxY ) {
+    __movePlayer(pxX, pxY, _movePlayerResult);
+    var pxX_= _movePlayerResult[0];
+    var pxY_= _movePlayerResult[1];
 
-    var playerMazeX__= Math.floor(pxPlayerX__ / pxTileWidth);
-    var playerMazeY__= Math.floor(pxPlayerY__ / pxTileHeight);
+    var mazeX= Math.floor(pxX_ / pxTileWidth);
+    var mazeY= Math.floor(pxY_ / pxTileHeight);
 
     // Check for item collision
-    var playerKey__= (playerMazeX__ + 1) + ':' + (playerMazeY__ + 1);
-    if ( playerKey__ in items ) {
-        if ( items[playerKey__].type === KEY ) {
-            playerItems.push(items[playerKey__]);
-            delete items[playerKey__];
+    var toKey= (mazeX + 1) + ':' + (mazeY + 1);
+    if ( toKey in items ) {
+        if ( items[toKey].type === KEY ) {
+            player.items.push(items[toKey]);
+            delete items[toKey];
         }
-        else if ( items[playerKey__].type === DOOR ) {
-            if ( items[playerKey__].opening === 0 ) {
+        else if ( items[toKey].type === DOOR ) {
+            if ( items[toKey].opening === 0 ) {
                 var haveKey;
-                for ( var i= 0; i < playerItems.length; i++ ) {
-                    if ( playerItems[i].type === KEY && playerItems[i].color === items[playerKey__].color ) {
-                        playerItems.splice(i, 1);
-                        items[playerKey__].opening= .1;  // Start door opening animation
+                for ( var i= 0; i < player.items.length; i++ ) {
+                    if ( player.items[i].type === KEY && player.items[i].color === items[toKey].color ) {
+                        player.items.splice(i, 1);
+                        items[toKey].opening= .1;  // Start door opening animation
                         haveKey= true;
                         break;
                     }
                 }
                 if ( !haveKey ) {
-                    playerKey= playerKey__;
+                    player.toKey= toKey;
                     return;
                 }
             }
-            if ( items[playerKey__].opening > 0 ) {
+            if ( items[toKey].opening > 0 ) {
                 return;  // Wait until door is up
             }
         }
     }
 
     // FIXME: 150 abhaengig von Tile-Groesse?
-    if ( (pxDirectionPlayerX - pxPlayerX_) * (pxDirectionPlayerX - pxPlayerX_) + (pxDirectionPlayerY - pxPlayerY_) * (pxDirectionPlayerY - pxPlayerY_) > 250 ) {
-        direction= Math.abs(pxPlayerX_ - pxPlayerX) > Math.abs(pxPlayerY_ - pxPlayerY) ? 0 : 1;
-        pxDirectionPlayerX= pxPlayerX_;
-        pxDirectionPlayerY= pxPlayerY_;
+    if ( (pxDirectionPlayerX - pxX) * (pxDirectionPlayerX - pxX) + (pxDirectionPlayerY - pxY) * (pxDirectionPlayerY - pxY) > 250 ) {
+        direction= Math.abs(pxX - player.pxX) > Math.abs(pxY - player.pxY) ? 0 : 1;
+        pxDirectionPlayerX= pxX;
+        pxDirectionPlayerY= pxY;
     }
 
-    pxPlayerX= pxPlayerX__;
-    pxPlayerY= pxPlayerY__;
-    playerKey= playerKey__;
+    player.pxX= pxX_;
+    player.pxY= pxY_;
+    player.toKey= toKey;
 
-    if ( playerMazeX !== playerMazeX__ || playerMazeY !== playerMazeY__ ) {
-
-        playerMovementX= playerMazeX__ - playerMazeX;
-        playerMovementY= playerMazeY__ - playerMazeY;
-
-        playerMazeX= playerMazeX__;
-        playerMazeY= playerMazeY__;
-        var playerDists= calcDistances(playerMazeX + 1, playerMazeY + 1);
-
-        updateMazeFloor(playerDists);
+    if ( player.mazeX !== mazeX || player.mazeY !== mazeY ) {
+        player.movementX= mazeX - player.mazeX;
+        player.movementY= mazeY - player.mazeY;
+        player.mazeX= mazeX;
+        player.mazeY= mazeY;
+        updateMazeFloor(calcDistances(mazeX + 1, mazeY + 1));
     }
 };
 
@@ -961,11 +957,9 @@ var movePlayer= function( playerSpeed ) {
     var dy= mouseY - playerProjY;
     var dist= dx * dx + dy * dy;
 
-    // playerMovement++;
-
     // Min. 20px (20^2)
     if ( dist < 400 ) {
-        if ( !playerIsMoving ) return;
+        if ( !player.isMoving ) return;
 
         var view= invProj(mouseX, mouseY);
 
@@ -976,11 +970,11 @@ var movePlayer= function( playerSpeed ) {
         return;
     }
 
-    playerIsMoving= true;
+    player.isMoving= true;
 
     var alpha= Math.atan2(dx, dy);
-    _movePlayer(pxPlayerX + Math.sin(alpha) * cWidth * playerSpeed,
-                pxPlayerY + Math.cos(alpha) * cHeight * playerSpeed);
+    _movePlayer(player.pxX + Math.sin(alpha) * cWidth * playerSpeed,
+                player.pxY + Math.cos(alpha) * cHeight * playerSpeed);
 };
 
 
