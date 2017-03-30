@@ -60,19 +60,23 @@ var pxTileWidth2= pxTileWidth / 2;
 var pxTileHeight2= pxTileHeight / 2;
 
 var Player= function() {
+    this.pxWidth= even(pxTileWidth * .6);
+    this.pxHeight= even(pxTileHeight * .8);
+    this.pxImageWidth= 60;
+    this.pxImageHeight= 60;
+
+    this.items= [];    // Items the player holds
+
     this.pxX= undefined;
     this.pxY= undefined;
     this.mazeX= undefined;
     this.mazeY= undefined;
     this.toKey= undefined;    // Maze x/y heading(!!) position. may not be actual position
-    this.items= [];    // Items the player holds
     this.isMoving= undefined;
     this.movementX= undefined;
     this.movementY= undefined;
-    this.pxWidth= even(pxTileWidth * .6);
-    this.pxHeight= even(pxTileHeight * .8);
-    this.pxImageWidth= 60;
-    this.pxImageHeight= 60;
+    this.projX= undefined;
+    this.projY= undefined;
 }
 
 var player= new Player();
@@ -297,7 +301,7 @@ var genMonsters= function() {
         x: player.pxX,
         y: player.pxY,
         projX: 0,
-        prosY: 0,
+        projY: 0,
         atTarget: 0,
         steps: [],
     };
@@ -425,9 +429,6 @@ var genMaze= function() {
 var projX= [];
 var projY= [];
 
-var playerProjX;
-var playerProjY;
-
 var calcTileProj= function( pos, proj, p ) {
 
     var PI_2= Math.PI / 2;
@@ -532,8 +533,8 @@ var calcProjs= function() {
     });
 
     var playerProj= proj(player.pxX, player.pxY);
-    playerProjX= playerProj[0];
-    playerProjY= playerProj[1];
+    player.projX= playerProj[0];
+    player.projY= playerProj[1];
 
     for ( var i= 0; i < monsters.length; i++ ) {
         var monsterProj= proj(monsters[i].x, monsters[i].y);
@@ -733,14 +734,14 @@ var drawPlayer= function() {
         }
     }
 
-    var x= playerProjX;
+    var x= player.projX;
     if ( player.toKey in items && items[player.toKey].type == DOOR && items[player.toKey].opening == 0 ) {
         imageX= 3;
         imageY= 2;
         x += random(-4, 4);
     }
 
-    drawImage(PLAYER, imageX, imageY, player.pxImageWidth, player.pxImageHeight, x, playerProjY, player.pxWidth, player.pxHeight);
+    drawImage(PLAYER, imageX, imageY, player.pxImageWidth, player.pxImageHeight, x, player.projY, player.pxWidth, player.pxHeight);
 };
 
 var drawMonsters= function() {
@@ -890,7 +891,9 @@ var __movePlayer= function( pxX_, pxY_, result ) {
 var pxDirectionPlayerX= 0;
 var pxDirectionPlayerY= 0;
 
+// Static, to reduce GCs
 var _movePlayerResult= [ 0, 0 ];
+
 var _movePlayer= function( pxX, pxY ) {
     __movePlayer(pxX, pxY, _movePlayerResult);
     var pxX_= _movePlayerResult[0];
@@ -949,12 +952,12 @@ var _movePlayer= function( pxX, pxY ) {
 };
 
 var movePlayer= function( playerSpeed ) {
-    if ( playerProjX === undefined ) return;
+    if ( player.projX === undefined ) return;
     if ( mousePressTimestamp === undefined ) return;
     if ( mousePressTimestamp < MOUSE_CLICK_DELAY ) return;
 
-    var dx= mouseX - playerProjX;
-    var dy= mouseY - playerProjY;
+    var dx= mouseX - player.projX;
+    var dy= mouseY - player.projY;
     var dist= dx * dx + dy * dy;
 
     // Min. 20px (20^2)
