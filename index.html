@@ -44,8 +44,8 @@ var cWidth;
 var cHeight;
 
 var maze= [];
-var mazeWidth= 7;
-var mazeHeight= 7;
+var mazeWidth= 9;
+var mazeHeight= 9;
 
 var items;
 
@@ -217,6 +217,8 @@ var genItems= function( dists ) {
     // FIXME: Find sane formula
     var doorsMake= Math.floor(Math.pow(mazeWidth * mazeHeight, .45) * .5);
 
+// doorsMake= 100;
+
     var _makeDoorKey= function( doorKey, ix ) {
         var keyKey;
         var entryKeyKey;
@@ -249,8 +251,18 @@ var genItems= function( dists ) {
         var ix= random(DOOR_MIN_POS, solution.length - DOOR_MAX_POS);
         while ( ix >= DOOR_MIN_POS ) {
             if ( solution[ix].length == 1 && !(solution[ix] in items) ) {
-                doorKey= solution[ix][0];
-                break;
+
+                // Don't allow a door in a bend, where the player can sneak past it.
+                var mazeX= lookup[solution[ix][0]][0];
+                var mazeY= lookup[solution[ix][0]][1];
+                if (   (maze[mazeY][mazeX - 1] < FLOOR || maze[mazeY - 1][mazeX] < FLOOR)
+                    && (maze[mazeY][mazeX + 1] < FLOOR || maze[mazeY - 1][mazeX] < FLOOR)
+                    && (maze[mazeY][mazeX - 1] < FLOOR || maze[mazeY + 1][mazeX] < FLOOR)
+                    && (maze[mazeY][mazeX + 1] < FLOOR || maze[mazeY + 1][mazeX] < FLOOR)
+                ) {
+                    doorKey= solution[ix][0];
+                    break;
+                }
             }
             ix--;
         }
@@ -650,7 +662,7 @@ var drawMaze= function() {
                 c_.fillStyle = 'rgb(20,100,0)';
             }
             else if ( content >= FLOOR ) {
-                c_.fillStyle = 'hsl(10,50%,' + (80 - content * 2 + FLOOR) +'%)';
+                c_.fillStyle = 'hsl(10,50%,' + (80 - content * 1 + FLOOR) +'%)';
             }
             else {
                 c_.fillStyle = 'rgb(0,0,0)';
