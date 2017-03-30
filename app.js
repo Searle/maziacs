@@ -2,21 +2,12 @@
 
 "use strict";
 
+// =============================================================================
+//  Config
+// =============================================================================
+
 var DEBUG= true;
 
-var even= function( f ) {
-    return f & ~1;
-}
-
-var mouseX;
-var mouseY;
-
-var canvas;
-var c;
-var cWidth;
-var cHeight;
-
-var maze= [];
 var mazeWidth= 9;
 var mazeHeight= 9;
 var pxTileSize= 48;
@@ -24,6 +15,11 @@ var pxTileSize= 48;
 // Breite in Tiles des gequetschten Aussenbereiches
 var borderX= 2;
 var borderY= 2;
+
+
+// =============================================================================
+//  Constants
+// =============================================================================
 
 var PLAYER= -7;
 var SPIDER= -6;
@@ -36,35 +32,69 @@ var FLOOR= 0;
 
 var dirs= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
 
-var items;
 
+// =============================================================================
+//  Globals
+// =============================================================================
+
+var mouseX;
+var mouseY;
+
+var canvas;
+var c;
+var cWidth;
+var cHeight;
+
+var maze;
 var pxMazeWidth;
 var pxMazeHeight;
+var items;
+var player;
+var monsters;
 
-var Player= function() {
-    this.type= PLAYER;
-    this.pxWidth= even(pxTileSize * .6);
-    this.pxHeight= even(pxTileSize * .8);
-    this.pxImageWidth= 60;
-    this.pxImageHeight= 60;
 
-    this.items= [];    // Items the player holds
+// =============================================================================
+//  Misc. tools
+// =============================================================================
 
-    this.pxX= undefined;
-    this.pxY= undefined;
-    this.mazeX= undefined;
-    this.mazeY= undefined;
-    this.toKey= undefined;    // Maze x/y heading(!!) position. may not be actual position
-    this.isMoving= undefined;
-    this.movementX= undefined;
-    this.movementY= undefined;
-    this.projX= undefined;
-    this.projY= undefined;
+var even= function( f ) {
+    return f & ~1;
 }
 
-var player= new Player();
+var characterCount= 0;
 
-var monsters;
+var initCharacter= function( type ) {
+    var ch= {
+        type: type,
+        index: characterCount++,
+
+        pxWidth: even(pxTileSize * .6),
+        pxHeight: even(pxTileSize * .8),
+        pxImageWidth: 60,
+        pxImageHeight: 60,
+
+        pxX: 0,
+        pxY: 0,
+        mazeX: 0,
+        mazeY: 0,
+        toKey: '0:0',    // Maze x/y heading(!!) position. may not be actual position
+        isMoving: false,
+        movementX: 0,
+        movementY: 0,
+        projX: 0,
+        projY: 0,
+    }
+
+    if ( type === PLAYER ) {
+        ch.items= [];   // Items the player holds
+    }
+    else if ( type === SPIDER ) {
+        ch.atTarget= 0;
+        ch.steps= [];
+    }
+
+    return ch;
+};
 
 var random= function( from, until ) {
     return Math.floor(Math.random() * (until - from) + from);
@@ -266,16 +296,14 @@ var genMonsters= function() {
 
     monsters= [];
 
-    var monster= {
-        type: SPIDER,
-        x: player.pxX,
-        y: player.pxY,
-        projX: 0,
-        projY: 0,
-        atTarget: 0,
-        steps: [],
-    };
+    var monster= initCharacter(SPIDER);
+    monster.pxX= player.pxX;
+    monster.pxY= player.pxY;
+    monsters.push(monster);
 
+    var monster= initCharacter(SPIDER);
+    monster.pxX= player.pxX;
+    monster.pxY= player.pxY;
     monsters.push(monster);
 };
 
@@ -284,6 +312,7 @@ var genMaze= function() {
     pxMazeWidth= pxTileSize * mazeWidth;
     pxMazeHeight= pxTileSize * mazeHeight;
 
+    maze= [];
     for ( var y= 0; y <= mazeHeight + 1; y++ ) {
         maze[y]= [];
     }
@@ -461,13 +490,15 @@ var calcTileProj= function( pos, proj, p ) {
     }
 };
 
-var proj= function( x, y ) {
+var updateCharacterProj= function( ch ) {
+    var x= ch.pxX;
+    var y= ch.pxY;
     var mazeX= Math.floor(x / pxTileSize);
     var mazeY= Math.floor(y / pxTileSize);
     var fracX= (x % pxTileSize) / pxTileSize;
     var fracY= (y % pxTileSize) / pxTileSize;
-    return [ projX[mazeX] + (projX[mazeX + 1] - projX[mazeX]) * fracX
-           , projY[mazeY] + (projY[mazeY + 1] - projY[mazeY]) * fracY ];
+    ch.projX= projX[mazeX] + (projX[mazeX + 1] - projX[mazeX]) * fracX;
+    ch.projY= projY[mazeY] + (projY[mazeY + 1] - projY[mazeY]) * fracY;
 };
 
 // TODO: Optimieren falls oefter benoetigt
@@ -499,14 +530,10 @@ var calcProjs= function() {
         mazeSize: mazeHeight,
     });
 
-    var playerProj= proj(player.pxX, player.pxY);
-    player.projX= playerProj[0];
-    player.projY= playerProj[1];
+    updateCharacterProj(player);
 
     for ( var i= 0; i < monsters.length; i++ ) {
-        var monsterProj= proj(monsters[i].x, monsters[i].y);
-        monsters[i].projX= monsterProj[0];
-        monsters[i].projY= monsterProj[1];
+        updateCharacterProj(monsters[i]);
     }
 };
 
@@ -515,30 +542,30 @@ var calcProjs= function() {
 //  Sprites
 // =============================================================================
 
-var TILES= 0;
-var TILE_SHADOWS= 1;
-var PLAYER= 2;
-var SPRITE_IMAGE_COUNT= 3;
+var IMAGE_TILES= 0;
+var IMAGE_TILE_SHADOWS= 1;
+var IMAGE_PLAYER= 2;
+var IMAGE_MONSTER1= 3;
 
 var imageFiles= [
-    'sprites.png', 'shadows.png', 'player.png'
+    'sprites.png', 'shadows.png', 'player.png', 'monster1.png'
 ];
 var imageSizes= [
-    128, 128, 64
+    128, 128, 64, 64
 ];
 
 var images= [];
 
-var spriteCanvas= document.createElement('canvas');
-var spriteContext= spriteCanvas.getContext('2d');
+var tempCanvas= document.createElement('canvas');
+var tempContext= tempCanvas.getContext('2d');
 
 var cachedRgbs= [];
 
 var getRgb= function( color ) {
     if ( !(color in cachedRgbs) ) {
-        spriteContext.fillStyle= 'hsl(' + (color * 50) + ',100%,60%)';
-        spriteContext.fillRect(0, 0, 1, 1);
-        var rgba= spriteContext.getImageData(0, 0, 1, 1).data;
+        tempContext.fillStyle= 'hsl(' + (color * 50) + ',100%,60%)';
+        tempContext.fillRect(0, 0, 1, 1);
+        var rgba= tempContext.getImageData(0, 0, 1, 1).data;
         cachedRgbs[color]= [ rgba[0], rgba[1], rgba[2] ];
     }
     return cachedRgbs[color];
@@ -553,11 +580,11 @@ var loadImage= function( url, cb ) {
     };
 }
 
-var loadSprites= function( cb ) {
-    if ( images.length < SPRITE_IMAGE_COUNT ) {
+var loadImages= function( cb ) {
+    if ( images.length < imageFiles.length ) {
         loadImage(imageFiles[images.length], function( image ) {
             images.push(image);
-            loadSprites(cb);
+            loadImages(cb);
         });
         return;
     }
@@ -573,18 +600,18 @@ var _getImage= function( imageIndex, x, y, width, height, color, withShadow ) {
     if ( width === undefined ) width= pxTileSize;
     if ( height === undefined ) height= pxTileSize;
 
-    var key= x + ':' + y + ':' + width + ':' + height + ':' + color;
+    var key= imageIndex + ':' + x + ':' + y + ':' + width + ':' + height + ':' + color;
     if ( !(key in cachedImages) ) {
 
         x *= imageSizes[imageIndex];
         y *= imageSizes[imageIndex];
 
-        spriteCanvas.width= width;
-        spriteCanvas.height= width;
-        spriteContext.drawImage(image, x, y, imageSizes[imageIndex], imageSizes[imageIndex], 0, 0, width, height);
+        tempCanvas.width= width;
+        tempCanvas.height= width;
+        tempContext.drawImage(image, x, y, imageSizes[imageIndex], imageSizes[imageIndex], 0, 0, width, height);
 
         if ( color !== undefined ) {
-            var imageData= spriteContext.getImageData(0, 0, width, height);
+            var imageData= tempContext.getImageData(0, 0, width, height);
             var rgb= getRgb(color);
             var rgba= imageData.data;
             for ( var i= width * height * 4 - 4; i >= 0; i -= 4 ) {
@@ -594,15 +621,15 @@ var _getImage= function( imageIndex, x, y, width, height, color, withShadow ) {
                     rgba[i + 2]= rgb[2];
                 }
             }
-            spriteContext.putImageData(imageData, 0, 0);
+            tempContext.putImageData(imageData, 0, 0);
         }
 
         if ( withShadow ) {
-            spriteContext.drawImage(images[imageIndex + 1], x, y, imageSizes[imageIndex], imageSizes[imageIndex], 0, 0, width, height);
+            tempContext.drawImage(images[imageIndex + 1], x, y, imageSizes[imageIndex], imageSizes[imageIndex], 0, 0, width, height);
         }
 
         var image= new Image();
-        image.src = spriteCanvas.toDataURL("image/png");
+        image.src = tempCanvas.toDataURL("image/png");
         cachedImages[key]= image;
     }
 
@@ -615,12 +642,12 @@ var getImage= function( imageIndex, x, y, width, height ) {
 
 var getItemImage= function( item, width, height ) {
     if ( item.type === KEY ) {
-        return _getImage(TILES, 0, 0, width, height, item.color, true);
+        return _getImage(IMAGE_TILES, 0, 0, width, height, item.color, true);
     }
     if ( item.type === DOOR ) {
         if ( item.opening < 0 ) return;
 
-        return _getImage(TILES, Math.floor(item.opening), 1, width, height, item.color, true);
+        return _getImage(IMAGE_TILES, Math.floor(item.opening), 1, width, height, item.color, true);
     }
 };
 
@@ -668,7 +695,7 @@ var drawMaze= function() {
                         c.drawImage(itemImage, 0, 0, pxTileSize, pxTileSize, px0, py0, px1 - px0, py1 - py0);
                     }
                     if ( key == player.toKey && items[key].type == DOOR && items[key].opening == 0 ) {
-                        var lightningImage= getImage(TILES, Math.floor(items[key].lightning), 2);
+                        var lightningImage= getImage(IMAGE_TILES, Math.floor(items[key].lightning), 2);
                         var yOfs= random(-2, 2);
                         c.drawImage(lightningImage, 0, 0, pxTileSize, pxTileSize, px0, py0 + yOfs, px1 - px0, py1 - py0 + yOfs);
                     }
@@ -684,36 +711,52 @@ var drawMaze= function() {
 }
 
 var drawImage= function( imageIndex, imageX, imageY, imageWidth, imageHeight, x, y, width, height ) {
-    var image= getImage(PLAYER, imageX, imageY, imageWidth, imageHeight);
+    var image= getImage(imageIndex, imageX, imageY, imageWidth, imageHeight);
     c.drawImage(image, 0, 0, imageWidth, imageHeight, x - imageWidth / 2, y + height / 2 - imageHeight - 2, imageWidth, imageHeight);
 }
 
-var drawPlayer= function() {
+var drawCharacter= function( ch ) {
+
     var imageX= 0;
     var imageY= 10;
-    if ( player.isMoving ) {
-        imageX= Math.floor((player.pxX + player.pxY) * .3) % 8 + 1;
-        if ( Math.abs(player.movementX) > Math.abs(player.movementY) ) {
-            imageY= player.movementX < 0 ? 9 : 11;
+    if ( ch.isMoving ) {
+        imageX= Math.floor((ch.pxX + ch.pxY) * .3) % 8 + 1;
+        if ( Math.abs(ch.movementX) > Math.abs(ch.movementY) ) {
+            imageY= ch.movementX < 0 ? 9 : 11;
         }
         else {
-            imageY= player.movementY < 0 ? 8 : 10;
+            imageY= ch.movementY < 0 ? 8 : 10;
         }
     }
 
-    var x= player.projX;
-    if ( player.toKey in items && items[player.toKey].type == DOOR && items[player.toKey].opening == 0 ) {
-        imageX= 3;
-        imageY= 2;
-        x += random(-4, 4);
+    var x= ch.projX;
+    var imageIndex= IMAGE_MONSTER1;
+
+    if ( ch.type == PLAYER ) {
+        imageIndex= IMAGE_PLAYER;
+        if ( ch.toKey in items && items[ch.toKey].type == DOOR && items[ch.toKey].opening == 0 ) {
+            imageX= 3;
+            imageY= 2;
+            x += random(-4, 4);
+        }
     }
 
-    drawImage(PLAYER, imageX, imageY, player.pxImageWidth, player.pxImageHeight, x, player.projY, player.pxWidth, player.pxHeight);
+    drawImage(imageIndex, imageX, imageY, ch.pxImageWidth, ch.pxImageHeight, x, ch.projY, ch.pxWidth, ch.pxHeight);
 };
 
-var drawMonsters= function() {
-    for ( var i= 0; i < monsters.length; i++ ) {
-        drawRect(monsters[i].projX, monsters[i].projY, 40, 10, 200);
+var drawPlayer= function() {
+    drawCharacter(player);
+};
+
+var drawCharacters= function() {
+    var chs= [ player ].concat(monsters).sort(function( ch1, ch2 ) {
+        if ( ch1.projY !== ch2.projY ) return ch1.projY - ch2.projY;
+        if ( ch1.projX !== ch2.projX ) return ch1.projX - ch2.projX;
+        return ch1.index - ch1.index;
+    });
+
+    for ( var i= 0; i < chs.length; i++ ) {
+        drawCharacter(chs[i]);
     }
 };
 
@@ -726,7 +769,7 @@ var drawPlayerItems= function() {
     var dx= width + 10;
 
     for ( var i= 0; i < player.items.length; i++ ) {
-        var inventoryImage= getImage(TILES, 2, 0, width, height);
+        var inventoryImage= getImage(IMAGE_TILES, 2, 0, width, height);
         c.drawImage(inventoryImage, 0, 0, width, height, x, 10, width, height);
         var itemImage= getItemImage(player.items[i], width, height);
         if ( itemImage ) {
@@ -743,8 +786,7 @@ var redraw= function() {
     c.fillRect(0, 0, cWidth, cHeight);
 
     drawMaze();
-    drawPlayer();
-    drawMonsters();
+    drawCharacters();
     drawPlayerItems();
 };
 
@@ -828,12 +870,12 @@ var wallActions= [
 
 var direction= 0;  // horizontal movement
 
-var __movePlayer= function( pxX_, pxY_, result ) {
+var __movePlayer= function( pxX, pxY, result ) {
 
-    var mazeX0= Math.floor((pxX_ - player.pxWidth / 2) / pxTileSize);
-    var mazeY0= Math.floor((pxY_ - player.pxHeight / 2) / pxTileSize);
-    var mazeX1= Math.floor((pxX_ + player.pxWidth / 2) / pxTileSize);
-    var mazeY1= Math.floor((pxY_ + player.pxHeight / 2) / pxTileSize);
+    var mazeX0= Math.floor((pxX - player.pxWidth / 2) / pxTileSize);
+    var mazeY0= Math.floor((pxY - player.pxHeight / 2) / pxTileSize);
+    var mazeX1= Math.floor((pxX + player.pxWidth / 2) / pxTileSize);
+    var mazeY1= Math.floor((pxY + player.pxHeight / 2) / pxTileSize);
 
     var walls00= maze[mazeY0 + 1][mazeX0 + 1] < FLOOR ? 1 : 0;
     var walls01= maze[mazeY0 + 1][mazeX1 + 1] < FLOOR ? 2 : 0;
@@ -845,14 +887,14 @@ var __movePlayer= function( pxX_, pxY_, result ) {
         var action= wallActions[direction][walls];
         if ( action === 0 ) return;
 
-        if ( action & 1 ) pxY_= mazeY1 * pxTileSize + player.pxHeight / 2;
-        if ( action & 2 ) pxX_= mazeX0 * pxTileSize + pxTileSize - player.pxWidth / 2;
-        if ( action & 4 ) pxY_= mazeY0 * pxTileSize + pxTileSize - player.pxHeight / 2;
-        if ( action & 8 ) pxX_= mazeX1 * pxTileSize + player.pxWidth / 2;
+        if ( action & 1 ) pxY= mazeY1 * pxTileSize + player.pxHeight / 2;
+        if ( action & 2 ) pxX= mazeX0 * pxTileSize + pxTileSize - player.pxWidth / 2;
+        if ( action & 4 ) pxY= mazeY0 * pxTileSize + pxTileSize - player.pxHeight / 2;
+        if ( action & 8 ) pxX= mazeX1 * pxTileSize + player.pxWidth / 2;
     }
 
-    result[0]= pxX_;
-    result[1]= pxY_;
+    result[0]= pxX;
+    result[1]= pxY;
 };
 
 var pxDirectionPlayerX= 0;
@@ -999,34 +1041,42 @@ var moveMonster= function( monster, monsterSpeed ) {
 // console.log(monster);
 
     if ( monster.atTarget === 0 ) {
-        var mazeX= Math.floor(monster.x / pxTileSize);
-        var mazeY= Math.floor(monster.y / pxTileSize);
+        var mazeX= Math.floor(monster.pxX / pxTileSize);
+        var mazeY= Math.floor(monster.pxY / pxTileSize);
         if ( monster.type === SPIDER ) {
             return targetSpider(monster, mazeX, mazeY);
         }
         return;
     }
 
-    var alpha= Math.atan2(monster.targetX - monster.x, monster.targetY - monster.y);
+    var alpha= Math.atan2(monster.targetX - monster.pxX, monster.targetY - monster.pxY);
+
+    monster.movementX= 0;
+    monster.movementY= 0;
+    monster.isMoving= false;
 
     if ( monster.atTarget & 1 ) {
         var dx= Math.sin(alpha) * cWidth * monsterSpeed;
-        if ( Math.abs(monster.x + dx - monster.targetX) <= dx ) {
+        if ( Math.abs(monster.pxX + dx - monster.targetX) <= dx ) {
             monster.x= monster.targetX;
             monster.atTarget &= ~1;
         }
         else {
-            monster.x += dx;
+            monster.movementX= dx;
+            monster.isMoving= true;
+            monster.pxX += dx;
         }
     }
     if ( monster.atTarget & 2 ) {
         var dy= Math.cos(alpha) * cHeight * monsterSpeed;
-        if ( Math.abs(monster.y + dy - monster.targetY) <= dy ) {
-            monster.y= monster.targetY;
+        if ( Math.abs(monster.pxY + dy - monster.targetY) <= dy ) {
+            monster.pxY= monster.targetY;
             monster.atTarget &= ~2;
         }
         else {
-            monster.y += dy;
+            monster.movementY= dy;
+            monster.isMoving= true;
+            monster.pxY += dy;
         }
     }
 };
@@ -1071,6 +1121,8 @@ var gameLogic= function() {
 
 var init= function() {
 
+    player= initCharacter(PLAYER);
+
     genMaze();
 
     canvas= document.getElementById('stage');
@@ -1091,7 +1143,7 @@ var init= function() {
 };
 
 window.addEventListener('load', function() {
-    loadSprites(init);
+    loadImages(init);
 });
 
 })();
