@@ -8,8 +8,8 @@
 
 var DEBUG= true;
 
-var mazeWidth= 19;
-var mazeHeight= 19;
+var mazeWidth= 5;
+var mazeHeight= 5;
 var pxTileSize= 48;
 
 // Breite in Tiles des gequetschten Aussenbereiches
@@ -50,6 +50,8 @@ var maze;
 var pxMazeWidth;
 var pxMazeHeight;
 var items;
+var startKey;
+var goalKey;
 var player;
 var monsters;
 
@@ -119,6 +121,7 @@ var calcDistances= function( startPosX, startPosY ) {
     var distance= 0;
     var key= startPosX + ':' + startPosY;
     var queue= [ [ key, startPosX, startPosY, distance ] ];
+    var startKey= key;
     var maxDistanceKey= key;
     var maxDistance= distance;
 
@@ -171,8 +174,9 @@ var calcDistances= function( startPosX, startPosY ) {
 
     return {
         lookup: lookup,
-        maxDistanceKey: maxDistanceKey,
+        startKey: startKey,
         maxDistance: maxDistance,
+        maxDistanceKey: maxDistanceKey,
         byDistance: byDistance,
         deadEnds: deadEnds,
     };
@@ -200,6 +204,9 @@ var genItems= function( dists ) {
     var maxDistance= dists.maxDistance;
     var maxDistanceKey= dists.maxDistanceKey;
     var deadEnds= dists.deadEnds;
+
+    startKey= dists.startKey;
+    goalKey= maxDistanceKey;
 
     var solution= [];
     var solutionLookup= {};
@@ -237,6 +244,9 @@ var genItems= function( dists ) {
 
 // doorsMake= 100;
 
+    items[startKey]= { type: DOOR, color: doorsMake + 1, opening: -1, closing: 0, lightning: 0, isGoal: true };
+    items[goalKey]= { type: KEY, color: doorsMake + 1 };
+
     var _makeDoorKey= function( doorKey, ix ) {
         var keyKey;
         var entryKeyKey;
@@ -254,7 +264,7 @@ var genItems= function( dists ) {
         }
         if ( keyKey !== undefined ) {
             doorsMake--;
-            items[doorKey]= { type: DOOR, color: doorsMake, opening: 0, lightning: 0 };
+            items[doorKey]= { type: DOOR, color: doorsMake, opening: 0, closing: -1, lightning: 0, isGoal: false };
             items[keyKey]= { type: KEY, color: doorsMake };
 
             // 50% chance to place a key at start of junction to block current
@@ -268,7 +278,7 @@ var genItems= function( dists ) {
         var doorKey= undefined;
         var ix= random(DOOR_MIN_POS, solution.length - DOOR_MAX_POS);
         while ( ix >= DOOR_MIN_POS ) {
-            if ( solution[ix].length == 1 && !(solution[ix] in items) ) {
+            if ( solution[ix].length === 1 && !(solution[ix] in items) ) {
 
                 // Don't allow a door in a bend, where the player can sneak past it.
                 var mazeX= lookup[solution[ix][0]][0];
@@ -295,6 +305,8 @@ var genItems= function( dists ) {
     // console.table(items);
     // console.log(deadEnds);
     // console.table(solution);
+
+    return doorsMake === 0;
 };
 
 var genMonsters= function( dists ) {
@@ -312,12 +324,12 @@ var genMonsters= function( dists ) {
     };
 
     var monster= initCharacter(PRINCESS);
-    monster.pxX= player.pxX;
-    monster.pxY= player.pxY;
+    monster.pxX= (lookup[goalKey][0] - .5) * pxTileSize;
+    monster.pxY= (lookup[goalKey][1] - .5) * pxTileSize;
     monsters.push(monster);
 };
 
-var genMaze= function() {
+var _genMaze= function() {
 
     pxMazeWidth= mazeWidth * pxTileSize;
     pxMazeHeight= mazeHeight * pxTileSize;
@@ -373,7 +385,7 @@ var genMaze= function() {
 
                 var dir= random(0, 4);
 
-                // IDEE: bei i == 3 bzw == 2 werden wirds wiggliger
+                // IDEE: bei i === 3 bzw === 2 werden wirds wiggliger
                 var i_max= floor === FLOOR ? 4 : 2;
                 for ( var i= 0; i < i_max; i++ ) {
                     var wallPosX= posX + dirs[dir][0];
@@ -423,10 +435,22 @@ var genMaze= function() {
     player.pxX= (startPos[0] - .5) * pxTileSize;
     player.pxY= (startPos[1] - .5) * pxTileSize;
 
-    genItems(dists);
-    genMonsters(dists);
+    if ( genItems(dists) ) {
+        genMonsters(dists);
+        return true;
+    }
+}
 
-    // console.table(maze);
+var genMaze= function() {
+
+    // Try limited times
+    for ( var i= 0; i < 100; i++ ) {
+        if ( _genMaze() ) return;
+    }
+
+    // Failed
+    monsters= [];
+    return;
 };
 
 
@@ -474,7 +498,7 @@ var calcTileProj= function( pos, proj, p ) {
             proj[tile]= (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
         }
         else if ( pxTile >= pxTargetSize - pxBorder ) {
-            if ( borderTile1 == mazeSize ) borderTile1= tile;
+            if ( borderTile1 === mazeSize ) borderTile1= tile;
 
             var fTile= (pxTile - pxTileN) / (pxTargetSize - pxBorder - pxTileN);
             proj[tile]= pxTargetSize - (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
@@ -656,9 +680,12 @@ var getItemImage= function( item, width, height ) {
         return _getImage(IMAGE_TILES, 0, 0, width, height, item.color, true);
     }
     if ( item.type === DOOR ) {
-        if ( item.opening < 0 ) return;
+        var pos;
+        if ( item.opening >= 0 ) pos= item.opening;
+        else if ( item.closing >= 0 ) pos= 7 - item.closing;
+        else return;
 
-        return _getImage(IMAGE_TILES, Math.floor(item.opening), 1, width, height, item.color, true);
+        return _getImage(IMAGE_TILES, Math.floor(pos), 1, width, height, item.color, true);
     }
 };
 
@@ -685,7 +712,7 @@ var drawMaze= function() {
 
             var content= maze[mazeY + 1][mazeX + 1];
 
-            if ( content == WALL ) {
+            if ( content === WALL ) {
                 // c_.fillStyle = 'rgb(' + Math.floor(255 * mazeX / mazeWidth) + ',' + (((mazeX + mazeY) & 1) ? 100 : 0) + ',0)';
                 c_.fillStyle = 'rgb(20,100,0)';
             }
@@ -700,12 +727,12 @@ var drawMaze= function() {
             var key= (mazeX + 1) + ':' + (mazeY + 1);
             if ( key in items ) {
 
-                if ( items[key].type == KEY || items[key].type == DOOR ) {
+                if ( items[key].type === KEY || items[key].type === DOOR ) {
                     var itemImage= getItemImage(items[key]);
                     if ( itemImage ) {
                         c.drawImage(itemImage, 0, 0, pxTileSize, pxTileSize, px0, py0, px1 - px0, py1 - py0);
                     }
-                    if ( key == player.toKey && items[key].type == DOOR && items[key].opening == 0 ) {
+                    if ( key === player.toKey && items[key].type === DOOR && items[key].opening === 0 ) {
                         var lightningImage= getImage(IMAGE_TILES, Math.floor(items[key].lightning), 2);
                         var yOfs= random(-2, 2);
                         c.drawImage(lightningImage, 0, 0, pxTileSize, pxTileSize, px0, py0 + yOfs, px1 - px0, py1 - py0 + yOfs);
@@ -714,7 +741,7 @@ var drawMaze= function() {
                 }
 
                 var w= 10, h= 10;
-                if ( items[key].type == DOOR ) w= 40, h= 40; else w= 20;
+                if ( items[key].type === DOOR ) w= 40, h= 40; else w= 20;
                 drawRect((px0 + px1) / 2, (py0 + py1) / 2, w, h, items[key].color * 40);
             }
         }
@@ -743,15 +770,16 @@ var drawCharacter= function( ch ) {
     var x= ch.projX;
     var imageIndex= IMAGE_MONSTER1;
 
-    if ( ch.type == PLAYER ) {
+    if ( ch.type === PLAYER ) {
         imageIndex= IMAGE_PLAYER;
-        if ( ch.toKey in items && items[ch.toKey].type == DOOR && items[ch.toKey].opening == 0 ) {
+        var key= ch.toKey;
+        if ( key in items && items[key].type === DOOR && items[key].opening === 0 ) {
             imageX= 3;
             imageY= 2;
             x += random(-4, 4);
         }
     }
-    else if ( ch.type == PRINCESS ) {
+    else if ( ch.type === PRINCESS ) {
         imageIndex= IMAGE_PRINCESS;
     }
 
@@ -872,10 +900,10 @@ var onMouseUp= function( e ) {
 //    1    wallActions:
 //  8   2  Which position must be corrected
 //    4    E.g: Walls at 2 + 4 + 8
-//              ==> walls == 14
-//              ==> wallAction[walls] == 12
+//              ==> walls === 14
+//              ==> wallAction[walls] === 12
 //              ==> Correct left (8) and bottom (4)
-//         wallAction for e.g. walls == 1 depend on player's heading
+//         wallAction for e.g. walls === 1 depend on player's heading
 
 var wallActions= [
     [ 0, 1, 1, 1, 4, 0, 2, 3, 4, 8, 0, 9, 4, 12, 6, 0 ],        // horizontal movement
@@ -948,7 +976,7 @@ var _movePlayer= function( pxX, pxY ) {
                     return;
                 }
             }
-            if ( items[toKey].opening > 0 ) {
+            if ( items[toKey].opening > 0 || items[toKey].closing > 0 ) {
                 return;  // Wait until door is up
             }
         }
@@ -959,6 +987,10 @@ var _movePlayer= function( pxX, pxY ) {
         direction= Math.abs(pxX - player.pxX) > Math.abs(pxY - player.pxY) ? 0 : 1;
         pxDirectionPlayerX= pxX;
         pxDirectionPlayerY= pxY;
+    }
+
+    if ( toKey !== startKey && items[startKey].closing === 0 ) {
+        items[startKey].closing= .1;
     }
 
     player.pxX= pxX_;
@@ -1014,12 +1046,18 @@ var targetSpider= function( monster, mazeX, mazeY ) {
     var mazeX_;
     var mazeY_;
 
-    if ( monster.steps.length == 0 ) {
+    if ( monster.steps.length === 0 ) {
         mazeX_= mazeX;
         mazeY_= mazeY;
         var content_= maze[mazeY_ + 1][mazeX_ + 1];
-        var toPlayer= random(0, 4);
-        var stepCount= random(1, 7);
+        var toPlayer= 1;
+        var stepCount = 1;
+
+        if ( monster.type === SPIDER ) {
+            toPlayer= random(0, 4);
+            stepCount= random(1, 7);
+        }
+
         for ( var step= 0; step < stepCount; step++ ) {
             var dir= random(0, 4);
             for ( var i= 0; i < 4; i++ ) {
@@ -1063,6 +1101,10 @@ var moveMonster= function( monster, monsterSpeed ) {
             return targetSpider(monster, mazeX, mazeY);
         }
         if ( monster.type === PRINCESS ) {
+
+            // Letzten Schluessel geholt?
+            if ( goalKey in items ) return;
+
             return targetSpider(monster, mazeX, mazeY);
         }
         return;
@@ -1114,6 +1156,13 @@ var moveItems= function( itemSpeed ) {
                 item.opening += itemSpeed;
                 if ( item.opening >= 7 ) item.opening= -1;
             }
+            if ( item.closing > 0 ) {
+                item.closing += itemSpeed;
+                if ( item.closing >= 7 ) {
+                    item.closing= -1;
+                    item.opening= 0;
+                }
+            }
             item.lightning += itemSpeed;
             if ( item.lightning >= 5 ) item.lightning -= 5;
         }
@@ -1125,7 +1174,7 @@ var moveItems= function( itemSpeed ) {
 //  Game Logic
 // =============================================================================
 
-var TICKS_PER_SECOND= 20;
+var TICKS_PER_SECOND= 50;
 
 var gameLogic= function() {
     moveItems(TICKS_PER_SECOND / 80);
