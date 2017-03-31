@@ -6,10 +6,10 @@
 //  Config
 // =============================================================================
 
-var DEBUG= true;
+var DEBUG= false;
 
-var mazeWidth= 5;
-var mazeHeight= 5;
+var mazeWidth= 7;
+var mazeHeight= 7;
 var pxTileSize= 48;
 
 // Breite in Tiles des gequetschten Aussenbereiches
@@ -94,10 +94,14 @@ var initCharacter= function( type ) {
     else if ( type === SPIDER ) {
         ch.atTarget= 0;
         ch.steps= [];
+        ch.stepIndex= 0;
+        ch.stepCount= 0;
     }
     else if ( type === PRINCESS ) {
         ch.atTarget= 0;
         ch.steps= [];
+        ch.stepIndex= 0;
+        ch.stepCount= 0;
     }
 
     return ch;
@@ -638,6 +642,8 @@ var _getImage= function( imageIndex, x, y, width, height, color, withShadow ) {
     var key= imageIndex + ':' + x + ':' + y + ':' + width + ':' + height + ':' + color;
     if ( !(key in cachedImages) ) {
 
+// console.log("_GET_IMAGE", key);
+
         x *= imageSizes[imageIndex];
         y *= imageSizes[imageIndex];
 
@@ -1046,12 +1052,15 @@ var targetSpider= function( monster, mazeX, mazeY ) {
     var mazeX_;
     var mazeY_;
 
-    if ( monster.steps.length === 0 ) {
+    if ( monster.stepIndex >= monster.stepCount ) {
         mazeX_= mazeX;
         mazeY_= mazeY;
         var content_= maze[mazeY_ + 1][mazeX_ + 1];
         var toPlayer= 1;
         var stepCount = 1;
+
+        monster.stepIndex= 0;
+        monster.stepCount= 0;
 
         if ( monster.type === SPIDER ) {
             toPlayer= random(0, 4);
@@ -1068,7 +1077,16 @@ var targetSpider= function( monster, mazeX, mazeY ) {
                     mazeX_= mazeX__;
                     mazeY_= mazeY__;
                     content_= content__;
-                    monster.steps.push([ mazeX_, mazeY_ ]);
+
+                    // GC-friendly solution
+                    if ( monster.steps.length > monster.stepCount ) {
+                        monster.steps[monster.stepCount][0]= mazeX_;
+                        monster.steps[monster.stepCount][1]= mazeY_;
+                    }
+                    else {
+                        monster.steps[monster.stepCount]= [ mazeX_, mazeY_ ];
+                    }
+                    monster.stepCount++;
                     break;
                 }
                 dir= (dir + 1) & 3;
@@ -1077,10 +1095,10 @@ var targetSpider= function( monster, mazeX, mazeY ) {
         }
     }
 
-    if ( monster.steps.length ) {
-        var pos= monster.steps.shift();
-        mazeX_= pos[0];
-        mazeY_= pos[1];
+    if ( monster.stepIndex < monster.stepCount ) {
+        mazeX_= monster.steps[monster.stepIndex][0];
+        mazeY_= monster.steps[monster.stepIndex][1];
+        monster.stepIndex++;
 
         if ( mazeX_ !== mazeX || mazeY_ !== mazeY ) {
             monster.targetX= (mazeX_ + .5 + randomf(-.2, .2)) * pxTileSize;
