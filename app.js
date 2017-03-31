@@ -8,8 +8,8 @@
 
 var DEBUG= true;
 
-var mazeWidth= 9;
-var mazeHeight= 9;
+var mazeWidth= 19;
+var mazeHeight= 19;
 var pxTileSize= 48;
 
 // Breite in Tiles des gequetschten Aussenbereiches
@@ -21,6 +21,7 @@ var borderY= 2;
 //  Constants
 // =============================================================================
 
+var PRINCESS= -8;
 var PLAYER= -7;
 var SPIDER= -6;
 var DOOR= -5;
@@ -89,6 +90,10 @@ var initCharacter= function( type ) {
         ch.items= [];   // Items the player holds
     }
     else if ( type === SPIDER ) {
+        ch.atTarget= 0;
+        ch.steps= [];
+    }
+    else if ( type === PRINCESS ) {
         ch.atTarget= 0;
         ch.steps= [];
     }
@@ -306,7 +311,7 @@ var genMonsters= function( dists ) {
         }
     };
 
-    var monster= initCharacter(SPIDER);
+    var monster= initCharacter(PRINCESS);
     monster.pxX= player.pxX;
     monster.pxY= player.pxY;
     monsters.push(monster);
@@ -551,12 +556,13 @@ var IMAGE_TILES= 0;
 var IMAGE_TILE_SHADOWS= 1;
 var IMAGE_PLAYER= 2;
 var IMAGE_MONSTER1= 3;
+var IMAGE_PRINCESS= 4;
 
 var imageFiles= [
-    'sprites.png', 'shadows.png', 'player.png', 'monster1.png'
+    'sprites.png', 'shadows.png', 'player.png', 'monster1.png', 'princess.png'
 ];
 var imageSizes= [
-    128, 128, 64, 64
+    128, 128, 64, 64, 64
 ];
 
 var images= [];
@@ -744,6 +750,9 @@ var drawCharacter= function( ch ) {
             imageY= 2;
             x += random(-4, 4);
         }
+    }
+    else if ( ch.type == PRINCESS ) {
+        imageIndex= IMAGE_PRINCESS;
     }
 
     drawImage(imageIndex, imageX, imageY, ch.pxImageWidth, ch.pxImageHeight, x, ch.projY, ch.pxWidth, ch.pxHeight);
@@ -1051,6 +1060,9 @@ var moveMonster= function( monster, monsterSpeed ) {
         var mazeX= Math.floor(monster.pxX / pxTileSize);
         var mazeY= Math.floor(monster.pxY / pxTileSize);
         if ( monster.type === SPIDER ) {
+            return targetSpider(monster, mazeX, mazeY);
+        }
+        if ( monster.type === PRINCESS ) {
             return targetSpider(monster, mazeX, mazeY);
         }
         return;
