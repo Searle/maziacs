@@ -23,7 +23,7 @@ var borderY= 2;
 
 var PRINCESS= -8;
 var PLAYER= -7;
-var SPIDER= -6;
+var SKELETON= -6;
 var DOOR= -5;
 var KEY= -4;
 var CALC= -3;
@@ -53,7 +53,7 @@ var items;
 var startKey;
 var goalKey;
 var player;
-var monsters;
+var npcs;
 
 
 // =============================================================================
@@ -91,7 +91,7 @@ var initCharacter= function( type ) {
     if ( type === PLAYER ) {
         ch.items= [];   // Items the player holds
     }
-    else if ( type === SPIDER ) {
+    else if ( type === SKELETON ) {
         ch.atTarget= 0;
         ch.steps= [];
         ch.stepIndex= 0;
@@ -313,24 +313,24 @@ var genItems= function( dists ) {
     return doorsMake === 0;
 };
 
-var genMonsters= function( dists ) {
+var genNpcs= function( dists ) {
     var lookup= dists.lookup;
 
-    monsters= [];
+    npcs= [];
 
     for ( var key in items ) {
         if ( items[key].type === KEY ) {
-            var monster= initCharacter(SPIDER);
-            monster.pxX= (lookup[key][0] - .5) * pxTileSize;
-            monster.pxY= (lookup[key][1] - .5) * pxTileSize;
-            monsters.push(monster);
+            var npc= initCharacter(SKELETON);
+            npc.pxX= (lookup[key][0] - .5) * pxTileSize;
+            npc.pxY= (lookup[key][1] - .5) * pxTileSize;
+            npcs.push(npc);
         }
     };
 
-    var monster= initCharacter(PRINCESS);
-    monster.pxX= (lookup[goalKey][0] - .5) * pxTileSize;
-    monster.pxY= (lookup[goalKey][1] - .5) * pxTileSize;
-    monsters.push(monster);
+    var npc= initCharacter(PRINCESS);
+    npc.pxX= (lookup[goalKey][0] - .5) * pxTileSize;
+    npc.pxY= (lookup[goalKey][1] - .5) * pxTileSize;
+    npcs.push(npc);
 };
 
 var _genMaze= function() {
@@ -431,16 +431,13 @@ var _genMaze= function() {
     // Take the most distant cell and recalculate distances
     dists= calcDistances(startPos[0], startPos[1]);
 
-// console.log(startPos);
-// console.table(dists.byDistance);
-
     updateMazeFloor(dists);
 
     player.pxX= (startPos[0] - .5) * pxTileSize;
     player.pxY= (startPos[1] - .5) * pxTileSize;
 
     if ( genItems(dists) ) {
-        genMonsters(dists);
+        genNpcs(dists);
         return true;
     }
 }
@@ -453,7 +450,7 @@ var genMaze= function() {
     }
 
     // Failed
-    monsters= [];
+    npcs= [];
     return;
 };
 
@@ -570,8 +567,8 @@ var calcProjs= function() {
 
     updateCharacterProj(player);
 
-    for ( var i= 0; i < monsters.length; i++ ) {
-        updateCharacterProj(monsters[i]);
+    for ( var i= 0; i < npcs.length; i++ ) {
+        updateCharacterProj(npcs[i]);
     }
 };
 
@@ -797,7 +794,7 @@ var drawPlayer= function() {
 };
 
 var drawCharacters= function() {
-    var chs= [ player ].concat(monsters).sort(function( ch1, ch2 ) {
+    var chs= [ player ].concat(npcs).sort(function( ch1, ch2 ) {
         if ( ch1.projY !== ch2.projY ) return ch1.projY - ch2.projY;
         if ( ch1.projX !== ch2.projX ) return ch1.projX - ch2.projX;
         return ch1.index - ch1.index;
@@ -1046,24 +1043,24 @@ var movePlayer= function( playerSpeed ) {
 
 
 // =============================================================================
-//  Move monsters
+//  Move npcs
 // =============================================================================
 
-var targetSpider= function( monster, mazeX, mazeY ) {
+var calcNpcTarget= function( npc, mazeX, mazeY ) {
     var mazeX_;
     var mazeY_;
 
-    if ( monster.stepIndex >= monster.stepCount ) {
+    if ( npc.stepIndex >= npc.stepCount ) {
         mazeX_= mazeX;
         mazeY_= mazeY;
         var content_= maze[mazeY_ + 1][mazeX_ + 1];
         var toPlayer= 1;
         var stepCount = 1;
 
-        monster.stepIndex= 0;
-        monster.stepCount= 0;
+        npc.stepIndex= 0;
+        npc.stepCount= 0;
 
-        if ( monster.type === SPIDER ) {
+        if ( npc.type === SKELETON ) {
             toPlayer= random(0, 4);
             stepCount= random(1, 7);
         }
@@ -1080,14 +1077,14 @@ var targetSpider= function( monster, mazeX, mazeY ) {
                     content_= content__;
 
                     // GC-friendly solution
-                    if ( monster.steps.length > monster.stepCount ) {
-                        monster.steps[monster.stepCount][0]= mazeX_;
-                        monster.steps[monster.stepCount][1]= mazeY_;
+                    if ( npc.steps.length > npc.stepCount ) {
+                        npc.steps[npc.stepCount][0]= mazeX_;
+                        npc.steps[npc.stepCount][1]= mazeY_;
                     }
                     else {
-                        monster.steps[monster.stepCount]= [ mazeX_, mazeY_ ];
+                        npc.steps[npc.stepCount]= [ mazeX_, mazeY_ ];
                     }
-                    monster.stepCount++;
+                    npc.stepCount++;
                     break;
                 }
                 dir= (dir + 1) & 3;
@@ -1096,74 +1093,76 @@ var targetSpider= function( monster, mazeX, mazeY ) {
         }
     }
 
-    if ( monster.stepIndex < monster.stepCount ) {
-        mazeX_= monster.steps[monster.stepIndex][0];
-        mazeY_= monster.steps[monster.stepIndex][1];
-        monster.stepIndex++;
+    if ( npc.stepIndex < npc.stepCount ) {
+        mazeX_= npc.steps[npc.stepIndex][0];
+        mazeY_= npc.steps[npc.stepIndex][1];
+        npc.stepIndex++;
 
         if ( mazeX_ !== mazeX || mazeY_ !== mazeY ) {
-            monster.targetX= (mazeX_ + .5 + randomf(-.2, .2)) * pxTileSize;
-            monster.targetY= (mazeY_ + .5 + randomf(-.3, .3)) * pxTileSize;
-            monster.atTarget= 3;
+            npc.targetX= (mazeX_ + .5 + randomf(-.2, .2)) * pxTileSize;
+            npc.targetY= (mazeY_ + .5 + randomf(-.3, .3)) * pxTileSize;
+            npc.atTarget= 3;
         }
     }
 };
 
-var moveMonster= function( monster, monsterSpeed ) {
+var _chooseNewTarget= function( npc ) {
 
-// console.log(monster);
+    if ( npc.atTarget !== 0 ) return;
 
-    if ( monster.atTarget === 0 ) {
-        var mazeX= Math.floor(monster.pxX / pxTileSize);
-        var mazeY= Math.floor(monster.pxY / pxTileSize);
-        if ( monster.type === SPIDER ) {
-            return targetSpider(monster, mazeX, mazeY);
-        }
-        if ( monster.type === PRINCESS ) {
+    // Letzten Schluessel geholt?
+    if ( npc.type === PRINCESS && goalKey in items ) return;
 
-            // Letzten Schluessel geholt?
-            if ( goalKey in items ) return;
+    var mazeX= Math.floor(npc.pxX / pxTileSize);
+    var mazeY= Math.floor(npc.pxY / pxTileSize);
+    calcNpcTarget(npc, mazeX, mazeY);
+}
 
-            return targetSpider(monster, mazeX, mazeY);
-        }
-        return;
-    }
+var _moveNpc= function( npc, npcSpeed ) {
 
-    var alpha= Math.atan2(monster.targetX - monster.pxX, monster.targetY - monster.pxY);
+    npc.isMoving= false;
 
-    monster.movementX= 0;
-    monster.movementY= 0;
-    monster.isMoving= false;
+    if ( npc.atTarget === 0 ) return;
 
-    if ( monster.atTarget & 1 ) {
-        var dx= Math.sin(alpha) * monsterSpeed;
-        if ( Math.abs(monster.pxX + dx - monster.targetX) <= dx ) {
-            monster.x= monster.targetX;
-            monster.atTarget &= ~1;
+    var alpha= Math.atan2(npc.targetX - npc.pxX, npc.targetY - npc.pxY);
+
+    if ( npc.atTarget & 1 ) {
+        var dx= Math.sin(alpha) * npcSpeed;
+        if ( Math.abs(npc.pxX + dx - npc.targetX) <= Math.abs(dx) ) {
+            npc.x= npc.targetX;
+            npc.atTarget &= ~1;
         }
         else {
-            monster.movementX= dx;
-            monster.isMoving= true;
-            monster.pxX += dx;
+            npc.movementX= dx;
+            npc.isMoving= true;
+            npc.pxX += dx;
         }
     }
-    if ( monster.atTarget & 2 ) {
-        var dy= Math.cos(alpha) * monsterSpeed;
-        if ( Math.abs(monster.pxY + dy - monster.targetY) <= dy ) {
-            monster.pxY= monster.targetY;
-            monster.atTarget &= ~2;
+    if ( npc.atTarget & 2 ) {
+        var dy= Math.cos(alpha) * npcSpeed;
+        if ( Math.abs(npc.pxY + dy - npc.targetY) <= Math.abs(dy) ) {
+            npc.pxY= npc.targetY;
+            npc.atTarget &= ~2;
         }
         else {
-            monster.movementY= dy;
-            monster.isMoving= true;
-            monster.pxY += dy;
+            npc.movementY= dy;
+            npc.isMoving= true;
+            npc.pxY += dy;
         }
     }
 };
 
-var moveMonsters= function( monsterSpeed ) {
-    for ( var i= 0; i < monsters.length; i++ ) {
-        moveMonster(monsters[i], monsterSpeed);
+var moveNpc= function( npc, npcSpeed ) {
+    _moveNpc(npc, npcSpeed);
+    if ( npc.atTarget === 0 ) {
+        _chooseNewTarget(npc);
+        _moveNpc(npc, npcSpeed);
+    }
+}
+
+var moveNpcs= function( npcSpeed ) {
+    for ( var i= 0; i < npcs.length; i++ ) {
+        moveNpc(npcs[i], npcSpeed);
     }
 };
 
@@ -1198,7 +1197,7 @@ var TICKS_PER_SECOND= 50;
 var gameLogic= function() {
     moveItems(TICKS_PER_SECOND / 80);
     movePlayer(TICKS_PER_SECOND / 10);
-    moveMonsters(TICKS_PER_SECOND / 15);
+    moveNpcs(TICKS_PER_SECOND / 15);
 };
 
 
