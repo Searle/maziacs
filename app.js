@@ -31,7 +31,7 @@ var FRAME= -2;
 var WALL= -1;
 var FLOOR= 0;
 
-var dirs= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
+var DIRS= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
 
 
 // =============================================================================
@@ -144,8 +144,8 @@ var calcDistances= function( startPosX, startPosY ) {
 
         var isDeadEnd= true;
         for ( var dir= 0; dir < 4; dir++ ) {
-            var nextPosX= posX + dirs[dir][0];
-            var nextPosY= posY + dirs[dir][1];
+            var nextPosX= posX + DIRS[dir][0];
+            var nextPosY= posY + DIRS[dir][1];
             if ( maze[nextPosY][nextPosX] < FLOOR ) continue;
 
             var nextKey= nextPosX + ':' + nextPosY;
@@ -392,15 +392,15 @@ var _genMaze= function() {
                 // IDEE: bei i === 3 bzw === 2 werden wirds wiggliger
                 var i_max= floor === FLOOR ? 4 : 2;
                 for ( var i= 0; i < i_max; i++ ) {
-                    var wallPosX= posX + dirs[dir][0];
-                    var wallPosY= posY + dirs[dir][1];
+                    var wallPosX= posX + DIRS[dir][0];
+                    var wallPosY= posY + DIRS[dir][1];
                     if ( maze[wallPosY][wallPosX] === WALL ) {
-                        var floorPosX= posX + dirs[dir][0] * 2;
-                        var floorPosY= posY + dirs[dir][1] * 2;
+                        var floorPosX= posX + DIRS[dir][0] * 2;
+                        var floorPosY= posY + DIRS[dir][1] * 2;
                         if ( maze[floorPosY][floorPosX] !== floor ) {
                             maze[wallPosY][wallPosX]= floor;
-                            posX += dirs[dir][0] * 2;
-                            posY += dirs[dir][1] * 2;
+                            posX += DIRS[dir][0] * 2;
+                            posY += DIRS[dir][1] * 2;
                             break;
                         }
                     }
@@ -839,6 +839,7 @@ var redraw= function() {
 };
 
 var lastTimestamp;
+
 var step= function( timestamp ) {
     if ( !lastTimestamp ) lastTimestamp= timestamp;
     var duration= timestamp - lastTimestamp;
@@ -911,7 +912,7 @@ var onMouseUp= function( e ) {
 //              ==> Correct left (8) and bottom (4)
 //         wallAction for e.g. walls === 1 depend on player's heading
 
-var wallActions= [
+var WALL_ACTIONS= [
     [ 0, 1, 1, 1, 4, 0, 2, 3, 4, 8, 0, 9, 4, 12, 6, 0 ],        // horizontal movement
     [ 0, 8, 2, 1, 2, 0, 2, 3, 8, 8, 0, 9, 4, 12, 6, 0 ],        // vertical movement
 ];
@@ -932,7 +933,7 @@ var __movePlayer= function( pxX, pxY, result ) {
 
     var walls= walls00 + walls01 + walls10 + walls11;
     if ( walls ) {
-        var action= wallActions[direction][walls];
+        var action= WALL_ACTIONS[direction][walls];
         if ( action === 0 ) return;
 
         if ( action & 1 ) pxY= mazeY1 * pxTileSize + player.pxHeight / 2;
@@ -1070,8 +1071,8 @@ var targetSpider= function( monster, mazeX, mazeY ) {
         for ( var step= 0; step < stepCount; step++ ) {
             var dir= random(0, 4);
             for ( var i= 0; i < 4; i++ ) {
-                var mazeX__= mazeX_ + dirs[dir][0];
-                var mazeY__= mazeY_ + dirs[dir][1];
+                var mazeX__= mazeX_ + DIRS[dir][0];
+                var mazeY__= mazeY_ + DIRS[dir][1];
                 var content__= maze[mazeY__ + 1][mazeX__ + 1];
                 if ( content__ >= FLOOR && ((toPlayer > 0 && content__ < content_) || (toPlayer === 0 && content__ > content_)) ) {
                     mazeX_= mazeX__;
@@ -1229,6 +1230,9 @@ var init= function() {
 };
 
 window.addEventListener('load', function() {
+    if ( DEBUG ) {
+        document.getElementsByTagName('HTML')[0].className= 'debug';
+    }
     loadImages(init);
 });
 
