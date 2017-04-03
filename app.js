@@ -8,8 +8,8 @@
 
 var DEBUG= false;
 
-var mazeWidth= 7;
-var mazeHeight= 7;
+var mazeWidth= 5;
+var mazeHeight= 5;
 var pxTileSize= 48;
 
 // Breite in Tiles des gequetschten Aussenbereiches
@@ -33,6 +33,8 @@ var FLOOR= 0;
 
 var DIRS= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
 
+var TICKS_PER_SECOND= 50;
+
 
 // =============================================================================
 //  Globals
@@ -54,6 +56,10 @@ var startKey;
 var goalKey;
 var player;
 var npcs;
+var itemSpeed;
+var playerSpeed;
+var npcSpeed;
+var fightCount;
 
 
 // =============================================================================
@@ -65,6 +71,10 @@ var even= function( f ) {
 }
 
 var characterCount= 0;
+
+var mkFighting= function( base, fact ) {
+    return function() { return Math.floor((base + fightCount * fact) % 6); };
+};
 
 var initCharacter= function( type ) {
     var ch= {
@@ -86,22 +96,19 @@ var initCharacter= function( type ) {
         movementY: 0,
         projX: 0,
         projY: 0,
+        fightBuddy: undefined,
     }
 
     if ( type === PLAYER ) {
         ch.items= [];   // Items the player holds
+        ch.fighting= mkFighting(0, 1.1);
     }
-    else if ( type === SKELETON ) {
+    else {
         ch.atTarget= 0;
         ch.steps= [];
         ch.stepIndex= 0;
         ch.stepCount= 0;
-    }
-    else if ( type === PRINCESS ) {
-        ch.atTarget= 0;
-        ch.steps= [];
-        ch.stepIndex= 0;
-        ch.stepCount= 0;
+        ch.fighting= mkFighting(characterCount * 1.5, .9);
     }
 
     return ch;
@@ -318,6 +325,11 @@ var genNpcs= function( dists ) {
 
     npcs= [];
 
+var npc= initCharacter(SKELETON);
+npc.pxX= (lookup[startKey][0] - .5) * pxTileSize;
+npc.pxY= (lookup[startKey][1] - .5) * pxTileSize;
+npcs.push(npc);
+if(0)
     for ( var key in items ) {
         if ( items[key].type === KEY ) {
             var npc= initCharacter(SKELETON);
@@ -756,34 +768,50 @@ var drawImage= function( imageIndex, imageX, imageY, imageWidth, imageHeight, x,
     c.drawImage(image, 0, 0, imageWidth, imageHeight, x - imageWidth / 2, y + height / 2 - imageHeight - 2, imageWidth, imageHeight);
 }
 
-var drawCharacter= function( ch ) {
+var facing= function( movementX, movementY ) {
+    if ( Math.abs(movementX) > Math.abs(movementY) ) {
+        return movementX < 0 ? 9 : 11;
+    }
+    return movementY < 0 ? 8 : 10;
+}
 
-    var imageX= 0;
-    var imageY= 10;
+var drawCharacter= function( ch ) {
+    var imageX;
+    var imageY;
+    var imageIndex;
+
     if ( ch.isMoving ) {
         imageX= Math.floor(ch.pxX * .3 + ch.pxY * .5) % 8 + 1;
-        if ( Math.abs(ch.movementX) > Math.abs(ch.movementY) ) {
-            imageY= ch.movementX < 0 ? 9 : 11;
-        }
-        else {
-            imageY= ch.movementY < 0 ? 8 : 10;
-        }
+        imageY= facing(ch.movementX, ch.movementY);
+    }
+    else if ( ch.fightBuddy !== undefined ) {
+        imageX= ch.fighting();
+        imageY= facing(ch.fightBuddy.pxX - ch.pxX, ch.fightBuddy.pxY - ch.pxY) + 4;
+    }
+    else {
+        imageX= 0;
+        imageY= 10;
     }
 
     var x= ch.projX;
-    var imageIndex= IMAGE_MONSTER1;
 
     if ( ch.type === PLAYER ) {
         imageIndex= IMAGE_PLAYER;
-        var key= ch.toKey;
-        if ( key in items && items[key].type === DOOR && items[key].opening === 0 ) {
-            imageX= 3;
-            imageY= 2;
-            x += random(-4, 4);
+
+        if ( ch.fightBuddy === undefined ) {
+            var key= ch.toKey;
+            if ( key in items && items[key].type === DOOR && items[key].opening === 0 ) {
+                imageX= 3;
+                imageY= 2;
+                x += random(-4, 4);
+            }
         }
     }
     else if ( ch.type === PRINCESS ) {
         imageIndex= IMAGE_PRINCESS;
+    }
+    else {
+        imageIndex= IMAGE_MONSTER1;
     }
 
     drawImage(imageIndex, imageX, imageY, ch.pxImageWidth, ch.pxImageHeight, x, ch.projY, ch.pxWidth, ch.pxHeight);
@@ -1010,10 +1038,14 @@ var _movePlayer= function( pxX, pxY ) {
     }
 };
 
-var movePlayer= function( playerSpeed ) {
-    if ( player.projX === undefined ) return;
-    if ( mousePressTimestamp === undefined ) return;
-    if ( mousePressTimestamp < MOUSE_CLICK_DELAY ) return;
+var movePlayer= function() {
+    if ( player.projX === undefined
+//        || player.fightBuddy !== undefined
+        || mousePressTimestamp === undefined
+        || mousePressTimestamp < MOUSE_CLICK_DELAY
+    ) {
+        return;
+    }
 
     var dx= mouseX - player.projX;
     var dy= mouseY - player.projY;
@@ -1060,18 +1092,22 @@ var calcNpcTarget= function( npc, mazeX, mazeY ) {
         npc.stepIndex= 0;
         npc.stepCount= 0;
 
-        if ( npc.type === SKELETON ) {
+        if ( npc.type === SKELETON && npc.fightBuddy === undefined ) {
             toPlayer= random(0, 4);
             stepCount= random(1, 7);
         }
 
         for ( var step= 0; step < stepCount; step++ ) {
             var dir= random(0, 4);
-            for ( var i= 0; i < 4; i++ ) {
+            for ( var i= 0; i < 4; i++, dir= (dir + 1) & 3 ) {
                 var mazeX__= mazeX_ + DIRS[dir][0];
                 var mazeY__= mazeY_ + DIRS[dir][1];
                 var content__= maze[mazeY__ + 1][mazeX__ + 1];
                 if ( content__ >= FLOOR && ((toPlayer > 0 && content__ < content_) || (toPlayer === 0 && content__ > content_)) ) {
+
+                    var key= (mazeX__ + 1) + ':' + (mazeY__ + 1);
+                    if ( key in items && items[key].type === DOOR && items[key].opening >= 0 ) continue;
+
                     mazeX_= mazeX__;
                     mazeY_= mazeY__;
                     content_= content__;
@@ -1087,7 +1123,6 @@ var calcNpcTarget= function( npc, mazeX, mazeY ) {
                     npc.stepCount++;
                     break;
                 }
-                dir= (dir + 1) & 3;
             }
             if ( i >= 4 ) break;  // Give up
         }
@@ -1099,6 +1134,9 @@ var calcNpcTarget= function( npc, mazeX, mazeY ) {
         npc.stepIndex++;
 
         if ( mazeX_ !== mazeX || mazeY_ !== mazeY ) {
+            // npc.targetX= mazeX_ + pxTileSize * .5;
+            // npc.targetY= mazeY_ + pxTileSize * .5;
+
             npc.targetX= (mazeX_ + .5 + randomf(-.2, .2)) * pxTileSize;
             npc.targetY= (mazeY_ + .5 + randomf(-.3, .3)) * pxTileSize;
             npc.atTarget= 3;
@@ -1152,21 +1190,41 @@ var _moveNpc= function( npc, npcSpeed ) {
     }
 };
 
-var moveNpc= function( npc, npcSpeed ) {
+var moveNpc= function( npc ) {
+
+    if ( npc.fightBuddy !== undefined ) {
+        npc.targetX= player.pxX - player.pxX % pxTileSize;
+        if ( player.pxX % pxTileSize < pxTileSize * .5 ) {
+            npc.targetX += pxTileSize - 1;
+        }
+        npc.targetY= player.pxY;
+        npc.atTarget= 3;
+        _moveNpc(npc, playerSpeed);
+        return;
+    }
+
     _moveNpc(npc, npcSpeed);
     if ( npc.atTarget === 0 ) {
         _chooseNewTarget(npc);
         _moveNpc(npc, npcSpeed);
     }
+
+    if ( npc.type === SKELETON
+        && (player.pxX - npc.pxX) * (player.pxX - npc.pxX) + (player.pxY - npc.pxY) * (player.pxY - npc.pxY) < pxTileSize * pxTileSize * .5
+    ) {
+        npc.fightBuddy= player;
+        player.fightBuddy= npc;
+        _chooseNewTarget(npc);
+    }
 }
 
-var moveNpcs= function( npcSpeed ) {
+var moveNpcs= function() {
     for ( var i= 0; i < npcs.length; i++ ) {
-        moveNpc(npcs[i], npcSpeed);
+        moveNpc(npcs[i]);
     }
 };
 
-var moveItems= function( itemSpeed ) {
+var moveItems= function() {
     for ( var key in items ) {
         var item= items[key];
         if ( item.type === DOOR ) {
@@ -1185,6 +1243,8 @@ var moveItems= function( itemSpeed ) {
             if ( item.lightning >= 5 ) item.lightning -= 5;
         }
     }
+
+    fightCount += itemSpeed;
 };
 
 
@@ -1192,12 +1252,10 @@ var moveItems= function( itemSpeed ) {
 //  Game Logic
 // =============================================================================
 
-var TICKS_PER_SECOND= 50;
-
-var gameLogic= function() {
-    moveItems(TICKS_PER_SECOND / 80);
-    movePlayer(TICKS_PER_SECOND / 10);
-    moveNpcs(TICKS_PER_SECOND / 15);
+var tick= function() {
+    moveItems();
+    movePlayer();
+    moveNpcs();
 };
 
 
@@ -1206,6 +1264,11 @@ var gameLogic= function() {
 // =============================================================================
 
 var init= function() {
+
+    itemSpeed= TICKS_PER_SECOND / 80;
+    playerSpeed= TICKS_PER_SECOND / 10;
+    npcSpeed= TICKS_PER_SECOND / 15;
+    fightCount= 0;
 
     player= initCharacter(PLAYER);
 
@@ -1225,7 +1288,7 @@ var init= function() {
     window.addEventListener('mouseup', onMouseUp, false);
 
     window.requestAnimationFrame(step);
-    setInterval(gameLogic, TICKS_PER_SECOND);
+    setInterval(tick, TICKS_PER_SECOND);
 };
 
 window.addEventListener('load', function() {
