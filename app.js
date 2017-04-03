@@ -97,6 +97,7 @@ var initCharacter= function( type ) {
         projX: 0,
         projY: 0,
         fightBuddy: undefined,
+        life: 100,
     }
 
     if ( type === PLAYER ) {
@@ -325,11 +326,13 @@ var genNpcs= function( dists ) {
 
     npcs= [];
 
+/*
 var npc= initCharacter(SKELETON);
 npc.pxX= (lookup[startKey][0] - .5) * pxTileSize;
 npc.pxY= (lookup[startKey][1] - .5) * pxTileSize;
 npcs.push(npc);
 if(0)
+*/
     for ( var key in items ) {
         if ( items[key].type === KEY ) {
             var npc= initCharacter(SKELETON);
@@ -641,7 +644,7 @@ var loadImages= function( cb ) {
 
 var cachedImages= [];
 
-var _getImage= function( imageIndex, x, y, width, height, color, withShadow ) {
+var getImage= function( imageIndex, x, y, width, height, color, withShadow ) {
 
     var image= images[imageIndex];
 
@@ -686,13 +689,9 @@ var _getImage= function( imageIndex, x, y, width, height, color, withShadow ) {
     return cachedImages[key];
 }
 
-var getImage= function( imageIndex, x, y, width, height ) {
-    return _getImage(imageIndex, x, y, width, height, undefined, false);
-}
-
 var getItemImage= function( item, width, height ) {
     if ( item.type === KEY ) {
-        return _getImage(IMAGE_TILES, 0, 0, width, height, item.color, true);
+        return getImage(IMAGE_TILES, 0, 0, width, height, item.color, true);
     }
     if ( item.type === DOOR ) {
         var pos;
@@ -700,7 +699,7 @@ var getItemImage= function( item, width, height ) {
         else if ( item.closing >= 0 ) pos= 7 - item.closing;
         else return;
 
-        return _getImage(IMAGE_TILES, Math.floor(pos), 1, width, height, item.color, true);
+        return getImage(IMAGE_TILES, Math.floor(pos), 1, width, height, item.color, true);
     }
 };
 
@@ -763,9 +762,9 @@ var drawMaze= function() {
     }
 }
 
-var drawImage= function( imageIndex, imageX, imageY, imageWidth, imageHeight, x, y, width, height ) {
-    var image= getImage(imageIndex, imageX, imageY, imageWidth, imageHeight);
-    c.drawImage(image, 0, 0, imageWidth, imageHeight, x - imageWidth / 2, y + height / 2 - imageHeight - 2, imageWidth, imageHeight);
+var drawImage= function( imageIndex, imageX, imageY, imageWidth, imageHeight, x, y, color ) {
+    var image= getImage(imageIndex, imageX, imageY, imageWidth, imageHeight, color);
+    c.drawImage(image, 0, 0, imageWidth, imageHeight, x - imageWidth / 2, y - imageHeight / 2, imageWidth, imageHeight);
 }
 
 var facing= function( movementX, movementY ) {
@@ -775,17 +774,56 @@ var facing= function( movementX, movementY ) {
     return movementY < 0 ? 8 : 10;
 }
 
+var stars= [];
+var MIN_STAR_SIZE= 10;
+
+var addStar= function( startX, startY, isPlayer ) {
+    for ( var i= 0; i < 10; i++ ) {
+        if ( stars[i] === undefined || stars[i].size < MIN_STAR_SIZE ) {
+            stars[i]= {
+                x: startX,
+                y: startY,
+                vx: random(-4, 4),
+                vy: random(-5, -10),
+                size: random(40, 70),
+                color: isPlayer ? 2.4 : 0,
+            };
+            return;
+        }
+    }
+}
+
 var drawCharacter= function( ch ) {
     var imageX;
     var imageY;
     var imageIndex;
 
-    if ( ch.isMoving ) {
+    var x= ch.projX;
+    var y= ch.projY + (ch.pxHeight - ch.pxImageHeight) / 2 + 2;
+    var imageWidth= ch.pxImageWidth;
+    var imageHeight= ch.pxImageHeight;
+
+    if ( ch.life <= 0 ) {
+        imageX= Math.min(5, Math.floor(-ch.life));
+        imageY= 20;
+        y += imageX * 3;
+        if ( ch.life < -20 ) {
+            imageWidth /= -19 - ch.life;
+            imageHeight /= -19 - ch.life;
+            if ( imageWidth < 10 ) return;
+        }
+    }
+    else if ( ch.isMoving ) {
         imageX= Math.floor(ch.pxX * .3 + ch.pxY * .5) % 8 + 1;
         imageY= facing(ch.movementX, ch.movementY);
     }
     else if ( ch.fightBuddy !== undefined ) {
         imageX= ch.fighting();
+
+        if ( imageX === 5 ) {
+            addStar((ch.fightBuddy.projX + ch.projX) / 2, (ch.fightBuddy.projY + ch.projY) / 2, ch === player);
+        }
+
         imageY= facing(ch.fightBuddy.pxX - ch.pxX, ch.fightBuddy.pxY - ch.pxY) + 4;
     }
     else {
@@ -793,12 +831,10 @@ var drawCharacter= function( ch ) {
         imageY= 10;
     }
 
-    var x= ch.projX;
-
     if ( ch.type === PLAYER ) {
         imageIndex= IMAGE_PLAYER;
 
-        if ( ch.fightBuddy === undefined ) {
+        if ( ch.life > 0 && ch.fightBuddy === undefined ) {
             var key= ch.toKey;
             if ( key in items && items[key].type === DOOR && items[key].opening === 0 ) {
                 imageX= 3;
@@ -814,7 +850,7 @@ var drawCharacter= function( ch ) {
         imageIndex= IMAGE_MONSTER1;
     }
 
-    drawImage(imageIndex, imageX, imageY, ch.pxImageWidth, ch.pxImageHeight, x, ch.projY, ch.pxWidth, ch.pxHeight);
+    drawImage(imageIndex, imageX, imageY, imageWidth, imageHeight, x, y);
 };
 
 var drawPlayer= function() {
@@ -822,6 +858,8 @@ var drawPlayer= function() {
 };
 
 var drawCharacters= function() {
+
+    // FIXME: GC-Friendly!!!
     var chs= [ player ].concat(npcs).sort(function( ch1, ch2 ) {
         if ( ch1.projY !== ch2.projY ) return ch1.projY - ch2.projY;
         if ( ch1.projX !== ch2.projX ) return ch1.projX - ch2.projX;
@@ -852,6 +890,19 @@ var drawPlayerItems= function() {
     }
 };
 
+var drawStars= function() {
+    for ( var i= 0; i < stars.length; i++ ) {
+        var star= stars[i];
+        if ( star.size < MIN_STAR_SIZE ) continue;
+
+        drawImage(IMAGE_TILES, 0, 3, Math.floor(star.size), Math.floor(star.size), star.x, star.y, star.color);
+        star.x += star.vx;
+        star.y += star.vy;
+        star.vy= star.vy * .9 + .2;
+        star.size *= .95;
+    }
+}
+
 var redraw= function() {
     calcProjs();
 
@@ -861,6 +912,14 @@ var redraw= function() {
     drawMaze();
     drawCharacters();
     drawPlayerItems();
+
+    drawStars();
+
+    if ( player.fightBuddy ) {
+        drawRect(cWidth / 2, cHeight - 40, (cWidth - 20) * Math.max(player.fightBuddy.life, 0) * .01, 10, 0);
+    }
+
+    drawRect(cWidth / 2, cHeight - 20, (cWidth - 20) * Math.max(player.life, 0) * .01, 10, 2.4 * 50);
 };
 
 var lastTimestamp;
@@ -868,8 +927,9 @@ var lastTimestamp;
 var step= function( timestamp ) {
     if ( !lastTimestamp ) lastTimestamp= timestamp;
     var duration= timestamp - lastTimestamp;
-    if ( duration >= 40 ) {
 
+    // 1000 / 40 == 25 FPS
+    if ( duration >= 40 ) {
         lastTimestamp= timestamp;
 
         if ( DEBUG ) document.getElementById('debug').innerHTML= 1000 / duration;
@@ -1039,8 +1099,19 @@ var _movePlayer= function( pxX, pxY ) {
 };
 
 var movePlayer= function() {
+
+    if ( !player.isMoving && player.fightBuddy ) {
+        if ( player.fightBuddy.life > 0 ) {
+            player.fightBuddy.life--;
+            if ( player.fightBuddy.life <= 0 ) {
+                player.fightBuddy.life= 0;
+                player.fightBuddy.fightBuddy= undefined;
+                player.fightBuddy= undefined;
+            }
+        }
+    }
+
     if ( player.projX === undefined
-//        || player.fightBuddy !== undefined
         || mousePressTimestamp === undefined
         || mousePressTimestamp < MOUSE_CLICK_DELAY
     ) {
@@ -1192,6 +1263,11 @@ var _moveNpc= function( npc, npcSpeed ) {
 
 var moveNpc= function( npc ) {
 
+    if ( npc.life <= 0 ) {
+        npc.life -= itemSpeed;
+        return;
+    }
+
     if ( npc.fightBuddy !== undefined ) {
         npc.targetX= player.pxX - player.pxX % pxTileSize;
         if ( player.pxX % pxTileSize < pxTileSize * .5 ) {
@@ -1200,6 +1276,12 @@ var moveNpc= function( npc ) {
         npc.targetY= player.pxY;
         npc.atTarget= 3;
         _moveNpc(npc, playerSpeed);
+        if ( !npc.isMoving ) {
+
+console.log("Player:", npc.fightBuddy.life );
+
+            npc.fightBuddy.life -= .1;
+        }
         return;
     }
 
@@ -1211,6 +1293,7 @@ var moveNpc= function( npc ) {
 
     if ( npc.type === SKELETON
         && (player.pxX - npc.pxX) * (player.pxX - npc.pxX) + (player.pxY - npc.pxY) * (player.pxY - npc.pxY) < pxTileSize * pxTileSize * .5
+        && player.fightBuddy === undefined
     ) {
         npc.fightBuddy= player;
         player.fightBuddy= npc;
