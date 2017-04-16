@@ -10,12 +10,13 @@ var DEBUG= false;
 
 var mazeWidth= 5;
 var mazeHeight= 5;
-var pxTileSize= 48;
+var pxTileSize= 64;
 
 // Breite in Tiles des gequetschten Aussenbereiches
 var borderX= 2;
 var borderY= 2;
 
+var SUPPORT_HDPI= true;
 
 // =============================================================================
 //  Constants
@@ -33,8 +34,11 @@ var FLOOR= 0;
 
 var DIRS= [ [ 0, -1 ], [ 1, 0 ], [ 0, 1 ], [ -1, 0 ] ];
 
+var EPSILON= 0.000001;
+
 var TICKS_PER_SECOND= 50;
 
+// touch-action: none; -moz-user-select: none;
 
 // =============================================================================
 //  Globals
@@ -49,8 +53,9 @@ var cWidth;
 var cHeight;
 
 var maze;
-var pxMazeWidth;
-var pxMazeHeight;
+var pxTileSize_;
+// var pxMazeWidth;
+// var pxMazeHeight;
 var items;
 var startKey;
 var goalKey;
@@ -60,6 +65,7 @@ var itemSpeed;
 var playerSpeed;
 var npcSpeed;
 var fightCount;
+var pixelRatio;
 
 
 // =============================================================================
@@ -70,24 +76,23 @@ var even= function( f ) {
     return f & ~1;
 }
 
-var characterCount= 0;
-
 var mkFighting= function( base, fact ) {
     return function() { return Math.floor((base + fightCount * fact) % 6); };
 };
+
+var characterCount= 0;
 
 var initCharacter= function( type ) {
     var ch= {
         type: type,
         index: characterCount++,
 
-        pxWidth: even(pxTileSize * .6),
-        pxHeight: even(pxTileSize * .8),
-        pxImageWidth: 60,
-        pxImageHeight: 60,
+        x: 0,
+        y: 0,
+        width: .6,
+        height: .8,
+        scale: 1.25,
 
-        pxX: 0,
-        pxY: 0,
         mazeX: 0,
         mazeY: 0,
         toKey: '0:0',    // Maze x/y heading(!!) position. may not be actual position
@@ -254,7 +259,7 @@ var genItems= function( dists ) {
     // FIXME: Find sane formula
     var doorsMake= Math.floor(Math.pow(mazeWidth * mazeHeight, .45) * .5);
 
-// doorsMake= 100;
+doorsMake= 0;
 
     items[startKey]= { type: DOOR, color: doorsMake + 1, opening: -1, closing: 0, lightning: 0, isGoal: true };
     items[goalKey]= { type: KEY, color: doorsMake + 1 };
@@ -333,25 +338,25 @@ npc.pxY= (lookup[startKey][1] - .5) * pxTileSize;
 npcs.push(npc);
 if(0)
 */
-    for ( var key in items ) {
+if(1)    for ( var key in items ) {
         if ( items[key].type === KEY ) {
             var npc= initCharacter(SKELETON);
-            npc.pxX= (lookup[key][0] - .5) * pxTileSize;
-            npc.pxY= (lookup[key][1] - .5) * pxTileSize;
+            npc.x= lookup[key][0] - .5;
+            npc.y= lookup[key][1] - .5;
             npcs.push(npc);
         }
     };
 
     var npc= initCharacter(PRINCESS);
-    npc.pxX= (lookup[goalKey][0] - .5) * pxTileSize;
-    npc.pxY= (lookup[goalKey][1] - .5) * pxTileSize;
+    npc.x= lookup[goalKey][0] - .5;
+    npc.y= lookup[goalKey][1] - .5;
     npcs.push(npc);
 };
 
 var _genMaze= function() {
 
-    pxMazeWidth= mazeWidth * pxTileSize;
-    pxMazeHeight= mazeHeight * pxTileSize;
+    // pxMazeWidth= mazeWidth * pxTileSize;
+    // pxMazeHeight= mazeHeight * pxTileSize;
 
     maze= [];
     for ( var y= 0; y <= mazeHeight + 1; y++ ) {
@@ -448,8 +453,8 @@ var _genMaze= function() {
 
     updateMazeFloor(dists);
 
-    player.pxX= (startPos[0] - .5) * pxTileSize;
-    player.pxY= (startPos[1] - .5) * pxTileSize;
+    player.x= startPos[0] - .5;
+    player.y= startPos[1] - .5;
 
     if ( genItems(dists) ) {
         genNpcs(dists);
@@ -478,6 +483,8 @@ var genMaze= function() {
 var projX= [];
 var projY= [];
 
+// FIXME: Optimieren: nur aufrufen wenn notwendig?
+
 var calcTileProj= function( pos, proj, p ) {
 
     var PI_2= Math.PI / 2;
@@ -486,22 +493,30 @@ var calcTileProj= function( pos, proj, p ) {
     var border= p.border;
     var mazeSize= p.mazeSize;
 
-    var pxBorder= border * pxTileSize;
-    var pxMazeSize= pxTileSize * mazeSize;
+    var pxBorder= pxTileSize_ * border;
+    if ( pxBorder > pxTargetSize * .4 ) {
+        pxBorder= pxTargetSize * .4;
+    }
+    var pxMazeSize= pxTileSize_ * mazeSize;
     var pxMazeMove= pxTargetSize - pxMazeSize;
     if ( pxMazeMove > 0 ) pxMazeMove= 0;
 
-    var pxTile0= pxMazeMove * pos / pxMazeSize;
+    // Spieler kann nicht ganz an Rand laufen, also "pos" strecken
+    pos= (pos - 1) * (mazeSize + 2) / mazeSize;
+    if ( pos < 0 ) pos= 0;
+    if ( pos > mazeSize ) pos= mazeSize;
+
+    var pxTile0= pxMazeMove * pos * pxTileSize_ / pxMazeSize;
+
     if ( pxMazeSize < pxTargetSize ) {
         pxTile0 += (pxTargetSize - pxMazeSize) / 2;
         pxTargetSize= pxTile0 + pxMazeSize;
     }
 
-    var pxTileN= pxTile0 + pxMazeSize;
-
     var borderTile0= -1;
     var borderTile1= mazeSize;
 
+    var pxTileN= pxTile0 + pxMazeSize;
     var pxTile= pxTile0;
 
     // <= !! Ein zusaetzlicher Wert wird noch benoetigt
@@ -511,42 +526,43 @@ var calcTileProj= function( pos, proj, p ) {
             borderTile0= tile;
 
             var fTile= (pxTile - pxTile0) / (pxBorder - pxTile0);
-            proj[tile]= (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
+            proj[tile]= Math.pow(fTile, 1.5) * pxBorder;
+
         }
         else if ( pxTile >= pxTargetSize - pxBorder ) {
             if ( borderTile1 === mazeSize ) borderTile1= tile;
 
             var fTile= (pxTile - pxTileN) / (pxTargetSize - pxBorder - pxTileN);
-            proj[tile]= pxTargetSize - (1 - Math.sin(PI_2 + PI_2 * fTile)) * pxBorder;
+            proj[tile]= pxTargetSize - Math.pow(fTile, 1.5) * pxBorder;
         }
         else {
             proj[tile]= pxTile;
         }
 
-        pxTile += pxTileSize;
+        pxTile += pxTileSize_;
     }
 
-    // Zu breite Tiles abschmaelern (Passiert durch Sinus)
+    // Zu breite Tiles abschmaelern (Passiert durch Math.pow)
     for ( ; borderTile0 >= 0; borderTile0-- ) {
-        if ( proj[borderTile0 + 1] - proj[borderTile0] > pxTileSize ) {
-            proj[borderTile0]= proj[borderTile0 + 1] - pxTileSize;
+        if ( proj[borderTile0 + 1] - proj[borderTile0] > pxTileSize_ ) {
+            proj[borderTile0]= proj[borderTile0 + 1] - pxTileSize_;
         }
     }
 
     for ( ; borderTile1 < mazeSize; borderTile1++ ) {
-        if ( proj[borderTile1] - proj[borderTile1 - 1] > pxTileSize ) {
-            proj[borderTile1]= proj[borderTile1 - 1] + pxTileSize;
+        if ( proj[borderTile1] - proj[borderTile1 - 1] > pxTileSize_ ) {
+            proj[borderTile1]= proj[borderTile1 - 1] + pxTileSize_;
         }
     }
 };
 
 var updateCharacterProj= function( ch ) {
-    var x= ch.pxX;
-    var y= ch.pxY;
-    var mazeX= Math.floor(x / pxTileSize);
-    var mazeY= Math.floor(y / pxTileSize);
-    var fracX= (x % pxTileSize) / pxTileSize;
-    var fracY= (y % pxTileSize) / pxTileSize;
+    var x= ch.x;
+    var y= ch.y;
+    var mazeX= Math.floor(x);
+    var mazeY= Math.floor(y);
+    var fracX= x - mazeX;
+    var fracY= y - mazeY;
     ch.projX= projX[mazeX] + (projX[mazeX + 1] - projX[mazeX]) * fracX;
     ch.projY= projY[mazeY] + (projY[mazeY + 1] - projY[mazeY]) * fracY;
 };
@@ -557,8 +573,8 @@ var invProj= function( x, y ) {
         if ( x >= projX[xi] ) {
             for ( var yi= projY.length - 2; yi >= 0; yi-- ) {
                 if ( y >= projY[yi] ) {
-                    return [ (xi + (x - projX[xi]) / (projX[xi + 1] - projX[xi])) * pxTileSize
-                           , (yi + (y - projY[yi]) / (projY[yi + 1] - projY[yi])) * pxTileSize ];
+                    return [ xi + (x - projX[xi]) / (projX[xi + 1] - projX[xi])
+                           , yi + (y - projY[yi]) / (projY[yi + 1] - projY[yi]) ];
                 }
             }
             return;
@@ -568,13 +584,13 @@ var invProj= function( x, y ) {
 
 var calcProjs= function() {
 
-    calcTileProj(player.pxX, projX, {
+    calcTileProj(player.x, projX, {
         pxTargetSize: cWidth,
         border: borderX,
         mazeSize: mazeWidth,
     });
 
-    calcTileProj(player.pxY, projY, {
+    calcTileProj(player.y, projY, {
         pxTargetSize: cHeight,
         border: borderY,
         mazeSize: mazeHeight,
@@ -659,8 +675,11 @@ var getImage= function( imageIndex, x, y, width, height, color, withShadow ) {
         x *= imageSizes[imageIndex];
         y *= imageSizes[imageIndex];
 
+        width= Math.floor(width * pixelRatio);
+        height= Math.floor(height * pixelRatio);
+
         tempCanvas.width= width;
-        tempCanvas.height= width;
+        tempCanvas.height= height;
         tempContext.drawImage(image, x, y, imageSizes[imageIndex], imageSizes[imageIndex], 0, 0, width, height);
 
         if ( color !== undefined ) {
@@ -736,7 +755,9 @@ var drawMaze= function() {
             else {
                 c_.fillStyle = 'rgb(0,0,0)';
             }
-            c_.fillRect(px0, py0, px1 - px0, py1 - py0);
+
+            // Close gaps by adding .4
+            c_.fillRect(px0, py0, px1 - px0 + .4, py1 - py0 + .4);
 
             var key= (mazeX + 1) + ':' + (mazeY + 1);
             if ( key in items ) {
@@ -744,12 +765,12 @@ var drawMaze= function() {
                 if ( items[key].type === KEY || items[key].type === DOOR ) {
                     var itemImage= getItemImage(items[key]);
                     if ( itemImage ) {
-                        c.drawImage(itemImage, 0, 0, pxTileSize, pxTileSize, px0, py0, px1 - px0, py1 - py0);
+                        c.drawImage(itemImage, 0, 0, pxTileSize * pixelRatio, pxTileSize * pixelRatio, px0, py0, px1 - px0, py1 - py0);
                     }
                     if ( key === player.toKey && items[key].type === DOOR && items[key].opening === 0 ) {
                         var lightningImage= getImage(IMAGE_TILES, Math.floor(items[key].lightning), 2);
                         var yOfs= random(-2, 2);
-                        c.drawImage(lightningImage, 0, 0, pxTileSize, pxTileSize, px0, py0 + yOfs, px1 - px0, py1 - py0 + yOfs);
+                        c.drawImage(lightningImage, 0, 0, pxTileSize * pixelRatio, pxTileSize * pixelRatio, px0, py0 + yOfs, px1 - px0, py1 - py0 + yOfs);
                     }
                     continue;
                 }
@@ -764,7 +785,7 @@ var drawMaze= function() {
 
 var drawImage= function( imageIndex, imageX, imageY, imageWidth, imageHeight, x, y, color ) {
     var image= getImage(imageIndex, imageX, imageY, imageWidth, imageHeight, color);
-    c.drawImage(image, 0, 0, imageWidth, imageHeight, x - imageWidth / 2, y - imageHeight / 2, imageWidth, imageHeight);
+    c.drawImage(image, 0, 0, image.width, image.height, x - imageWidth / 2, y - imageHeight / 2, imageWidth, imageHeight);
 }
 
 var facing= function( movementX, movementY ) {
@@ -798,23 +819,21 @@ var drawCharacter= function( ch ) {
     var imageY;
     var imageIndex;
 
+    var imageSize= pxTileSize * ch.scale;
     var x= ch.projX;
-    var y= ch.projY + (ch.pxHeight - ch.pxImageHeight) / 2 + 2;
-    var imageWidth= ch.pxImageWidth;
-    var imageHeight= ch.pxImageHeight;
+    var y= ch.projY + (ch.height * 50 - imageSize) / 2 + 2;      // FIXME * 50
 
     if ( ch.life <= 0 ) {
         imageX= Math.min(5, Math.floor(-ch.life));
         imageY= 20;
-        y += imageX * 3;
+        y += imageX * pxTileSize * .06;
         if ( ch.life < -20 ) {
-            imageWidth /= -19 - ch.life;
-            imageHeight /= -19 - ch.life;
-            if ( imageWidth < 10 ) return;
+            imageSize /= -19 - ch.life;
+            if ( imageSize < 10 ) return;
         }
     }
     else if ( ch.isMoving ) {
-        imageX= Math.floor(ch.pxX * .3 + ch.pxY * .5) % 8 + 1;
+        imageX= Math.floor(ch.x * 15 + ch.y * 25) % 8 + 1;
         imageY= facing(ch.movementX, ch.movementY);
     }
     else if ( ch.fightBuddy !== undefined ) {
@@ -824,7 +843,7 @@ var drawCharacter= function( ch ) {
             addStar((ch.fightBuddy.projX + ch.projX) / 2, (ch.fightBuddy.projY + ch.projY) / 2, ch === player);
         }
 
-        imageY= facing(ch.fightBuddy.pxX - ch.pxX, ch.fightBuddy.pxY - ch.pxY) + 4;
+        imageY= facing(ch.fightBuddy.x - ch.x, ch.fightBuddy.y - ch.y) + 4;
     }
     else {
         imageX= 0;
@@ -839,7 +858,7 @@ var drawCharacter= function( ch ) {
             if ( key in items && items[key].type === DOOR && items[key].opening === 0 ) {
                 imageX= 3;
                 imageY= 2;
-                x += random(-4, 4);
+                x += random(pxTileSize * -.1, pxTileSize * .1);
             }
         }
     }
@@ -850,7 +869,7 @@ var drawCharacter= function( ch ) {
         imageIndex= IMAGE_MONSTER1;
     }
 
-    drawImage(imageIndex, imageX, imageY, imageWidth, imageHeight, x, y);
+    drawImage(imageIndex, imageX, imageY, imageSize, imageSize, x, y);
 };
 
 var drawPlayer= function() {
@@ -906,7 +925,9 @@ var drawStars= function() {
 var redraw= function() {
     calcProjs();
 
-    c.fillStyle = 'rgb(0,0,0)';
+    //c.clearRect(0, 100, cWidth, cHeight);
+    c.fillStyle= 'red';
+// console.log("FILL", cWidth);
     c.fillRect(0, 0, cWidth, cHeight);
 
     drawMaze();
@@ -939,9 +960,44 @@ var step= function( timestamp ) {
     window.requestAnimationFrame(step);
 };
 
+var lastPixelRatio;
+
+var updateCanvas= function() {
+
+    if ( SUPPORT_HDPI ) {
+        var dpr= window.devicePixelRatio || 1;
+        var bsr= c.webkitBackingStorePixelRatio
+                || c.mozBackingStorePixelRatio
+                || c.msBackingStorePixelRatio
+                || c.backingStorePixelRatio
+                || 1;
+        pixelRatio= dpr / bsr;
+// console.log("PIXELRATIO", dpr, bsr, window.innerWidth);
+    }
+    else {
+        pixelRatio= 1;
+    }
+
+    cWidth= window.innerWidth;
+    cHeight= window.innerHeight;
+    canvas.style.width = cWidth + "px";
+    canvas.style.height = cHeight + "px";
+    canvas.width = cWidth * pixelRatio;
+    canvas.height = cHeight * pixelRatio;
+
+    pxTileSize_= pxTileSize * pixelRatio;
+
+    // Nicht per scale(), da scale relative Werte nimmt
+    c.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+    if ( lastPixelRatio !== pixelRatio ) {
+        cachedImages= [];
+        lastPixelRatio= pixelRatio;
+    }
+}
+
 var resizeCanvas= function() {
-    canvas.width= cWidth= window.innerWidth;
-    canvas.height= cHeight= window.innerHeight;
+    updateCanvas();
     redraw();
 };
 
@@ -1004,12 +1060,12 @@ var WALL_ACTIONS= [
 
 var direction= 0;  // horizontal movement
 
-var __movePlayer= function( pxX, pxY, result ) {
+var __movePlayer= function( x, y, result ) {
 
-    var mazeX0= Math.floor((pxX - player.pxWidth / 2) / pxTileSize);
-    var mazeY0= Math.floor((pxY - player.pxHeight / 2) / pxTileSize);
-    var mazeX1= Math.floor((pxX + player.pxWidth / 2) / pxTileSize);
-    var mazeY1= Math.floor((pxY + player.pxHeight / 2) / pxTileSize);
+    var mazeX0= Math.floor(x - player.width * .5);
+    var mazeY0= Math.floor(y - player.height * .5);
+    var mazeX1= Math.floor(x + player.width * .5);
+    var mazeY1= Math.floor(y + player.height * .5);
 
     var walls00= maze[mazeY0 + 1][mazeX0 + 1] < FLOOR ? 1 : 0;
     var walls01= maze[mazeY0 + 1][mazeX1 + 1] < FLOOR ? 2 : 0;
@@ -1020,15 +1076,15 @@ var __movePlayer= function( pxX, pxY, result ) {
     if ( walls ) {
         var action= WALL_ACTIONS[direction][walls];
         if ( action === 0 ) return;
-
-        if ( action & 1 ) pxY= mazeY1 * pxTileSize + player.pxHeight / 2;
-        if ( action & 2 ) pxX= mazeX0 * pxTileSize + pxTileSize - player.pxWidth / 2;
-        if ( action & 4 ) pxY= mazeY0 * pxTileSize + pxTileSize - player.pxHeight / 2;
-        if ( action & 8 ) pxX= mazeX1 * pxTileSize + player.pxWidth / 2;
+console.log(walls, action, direction);
+        if ( action & 1 ) y= mazeY1 + player.height * .5;
+        if ( action & 2 ) x= mazeX0 + 1 - player.width * .5;
+        if ( action & 4 ) y= mazeY0 + 1 - player.height * .5;
+        if ( action & 8 ) x= mazeX1 + player.width * .5;
     }
 
-    result[0]= pxX;
-    result[1]= pxY;
+    result[0]= x;
+    result[1]= y;
 };
 
 var pxDirectionPlayerX= 0;
@@ -1037,13 +1093,13 @@ var pxDirectionPlayerY= 0;
 // Static, to reduce GCs
 var _movePlayerResult= [ 0, 0 ];
 
-var _movePlayer= function( pxX, pxY ) {
-    __movePlayer(pxX, pxY, _movePlayerResult);
-    var pxX_= _movePlayerResult[0];
-    var pxY_= _movePlayerResult[1];
+var _movePlayer= function( x, y ) {
+    __movePlayer(x, y, _movePlayerResult);
+    var x_= _movePlayerResult[0];
+    var y_= _movePlayerResult[1];
 
-    var mazeX= Math.floor(pxX_ / pxTileSize);
-    var mazeY= Math.floor(pxY_ / pxTileSize);
+    var mazeX= Math.floor(x_);
+    var mazeY= Math.floor(y_);
 
     // Check for item collision
     var toKey= (mazeX + 1) + ':' + (mazeY + 1);
@@ -1074,19 +1130,22 @@ var _movePlayer= function( pxX, pxY ) {
         }
     }
 
-    // FIXME: 150 abhaengig von Tile-Groesse?
-    if ( (pxDirectionPlayerX - pxX) * (pxDirectionPlayerX - pxX) + (pxDirectionPlayerY - pxY) * (pxDirectionPlayerY - pxY) > 250 ) {
-        direction= Math.abs(pxX - player.pxX) > Math.abs(pxY - player.pxY) ? 0 : 1;
-        pxDirectionPlayerX= pxX;
-        pxDirectionPlayerY= pxY;
+// console.log("DIR", (pxDirectionPlayerX - x) * (pxDirectionPlayerX - x) + (pxDirectionPlayerY - y) * (pxDirectionPlayerY - y));
+
+    if ( Math.abs(pxDirectionPlayerX - x) > .1 || Math.abs(pxDirectionPlayerY - y) > .1 ) {
+        direction= Math.abs(x - player.x) > Math.abs(y - player.y) ? 0 : 1;
+// console.log("DIR2", direction);
+        pxDirectionPlayerX= x;
+        pxDirectionPlayerY= y;
     }
+
 
     if ( toKey !== startKey && items[startKey].closing === 0 ) {
         items[startKey].closing= .1;
     }
 
-    player.pxX= pxX_;
-    player.pxY= pxY_;
+    player.x= x_;
+    player.y= y_;
     player.toKey= toKey;
 
     if ( player.mazeX !== mazeX || player.mazeY !== mazeY ) {
@@ -1102,7 +1161,7 @@ var movePlayer= function() {
 
     if ( !player.isMoving && player.fightBuddy ) {
         if ( player.fightBuddy.life > 0 ) {
-            player.fightBuddy.life--;
+///            player.fightBuddy.life--;
             if ( player.fightBuddy.life <= 0 ) {
                 player.fightBuddy.life= 0;
                 player.fightBuddy.fightBuddy= undefined;
@@ -1123,12 +1182,14 @@ var movePlayer= function() {
     var dist= dx * dx + dy * dy;
 
     // FIXME: Kann einmal ausgerechnet werden
-    var limit= playerSpeed * playerSpeed + playerSpeed * playerSpeed;
+    var ps= playerSpeed * pxTileSize;
+    var limit= ps * ps + ps * ps;
 
-    if ( dist < limit ) {
+    if ( 0 && dist < limit ) {
         if ( !player.isMoving ) return;
 
         var view= invProj(mouseX, mouseY);
+console.log(view);
 
         // mouseX/mouseY may be out of range
         if ( view === undefined ) return;
@@ -1140,8 +1201,8 @@ var movePlayer= function() {
     player.isMoving= true;
 
     var alpha= Math.atan2(dx, dy);
-    _movePlayer(player.pxX + Math.sin(alpha) * playerSpeed,
-                player.pxY + Math.cos(alpha) * playerSpeed);
+    _movePlayer(player.x + Math.sin(alpha) * playerSpeed,
+                player.y + Math.cos(alpha) * playerSpeed);
 };
 
 
@@ -1205,11 +1266,8 @@ var calcNpcTarget= function( npc, mazeX, mazeY ) {
         npc.stepIndex++;
 
         if ( mazeX_ !== mazeX || mazeY_ !== mazeY ) {
-            // npc.targetX= mazeX_ + pxTileSize * .5;
-            // npc.targetY= mazeY_ + pxTileSize * .5;
-
-            npc.targetX= (mazeX_ + .5 + randomf(-.2, .2)) * pxTileSize;
-            npc.targetY= (mazeY_ + .5 + randomf(-.3, .3)) * pxTileSize;
+            npc.targetX= mazeX_ + .5 + randomf(-.2, .2);
+            npc.targetY= mazeY_ + .5 + randomf(-.3, .3);
             npc.atTarget= 3;
         }
     }
@@ -1222,8 +1280,8 @@ var _chooseNewTarget= function( npc ) {
     // Letzten Schluessel geholt?
     if ( npc.type === PRINCESS && goalKey in items ) return;
 
-    var mazeX= Math.floor(npc.pxX / pxTileSize);
-    var mazeY= Math.floor(npc.pxY / pxTileSize);
+    var mazeX= Math.floor(npc.x);
+    var mazeY= Math.floor(npc.y);
     calcNpcTarget(npc, mazeX, mazeY);
 }
 
@@ -1233,30 +1291,30 @@ var _moveNpc= function( npc, npcSpeed ) {
 
     if ( npc.atTarget === 0 ) return;
 
-    var alpha= Math.atan2(npc.targetX - npc.pxX, npc.targetY - npc.pxY);
+    var alpha= Math.atan2(npc.targetX - npc.x, npc.targetY - npc.y);
 
     if ( npc.atTarget & 1 ) {
         var dx= Math.sin(alpha) * npcSpeed;
-        if ( Math.abs(npc.pxX + dx - npc.targetX) <= Math.abs(dx) ) {
+        if ( Math.abs(npc.x + dx - npc.targetX) - Math.abs(dx) < EPSILON ) {
             npc.x= npc.targetX;
             npc.atTarget &= ~1;
         }
         else {
             npc.movementX= dx;
             npc.isMoving= true;
-            npc.pxX += dx;
+            npc.x += dx;
         }
     }
     if ( npc.atTarget & 2 ) {
         var dy= Math.cos(alpha) * npcSpeed;
-        if ( Math.abs(npc.pxY + dy - npc.targetY) <= Math.abs(dy) ) {
-            npc.pxY= npc.targetY;
+        if ( Math.abs(npc.y + dy - npc.targetY) - Math.abs(dy) < EPSILON ) {
+            npc.y= npc.targetY;
             npc.atTarget &= ~2;
         }
         else {
             npc.movementY= dy;
             npc.isMoving= true;
-            npc.pxY += dy;
+            npc.y += dy;
         }
     }
 };
@@ -1269,16 +1327,16 @@ var moveNpc= function( npc ) {
     }
 
     if ( npc.fightBuddy !== undefined ) {
-        npc.targetX= player.pxX - player.pxX % pxTileSize;
-        if ( player.pxX % pxTileSize < pxTileSize * .5 ) {
-            npc.targetX += pxTileSize - 1;
+        npc.targetX= Math.floor(player.x);
+        if ( player.x % 1 < .5 ) {
+            npc.targetX += .95;
         }
-        npc.targetY= player.pxY;
+        npc.targetY= player.y;
         npc.atTarget= 3;
         _moveNpc(npc, playerSpeed);
         if ( !npc.isMoving ) {
 
-console.log("Player:", npc.fightBuddy.life );
+// console.log("Player:", npc.fightBuddy.life );
 
             npc.fightBuddy.life -= .1;
         }
@@ -1292,7 +1350,7 @@ console.log("Player:", npc.fightBuddy.life );
     }
 
     if ( npc.type === SKELETON
-        && (player.pxX - npc.pxX) * (player.pxX - npc.pxX) + (player.pxY - npc.pxY) * (player.pxY - npc.pxY) < pxTileSize * pxTileSize * .5
+        && (player.x - npc.x) * (player.x - npc.x) + (player.y - npc.y) * (player.y - npc.y) < .5
         && player.fightBuddy === undefined
     ) {
         npc.fightBuddy= player;
@@ -1348,20 +1406,22 @@ var tick= function() {
 
 var init= function() {
 
+    canvas= document.getElementById('stage');
+    c= canvas.getContext('2d');
+
+    window.addEventListener('resize', resizeCanvas, false);
+    updateCanvas();
+
+    // FIXME: Rename
     itemSpeed= TICKS_PER_SECOND / 80;
-    playerSpeed= TICKS_PER_SECOND / 10;
-    npcSpeed= TICKS_PER_SECOND / 15;
+
+    playerSpeed= TICKS_PER_SECOND / 500;
+    npcSpeed= TICKS_PER_SECOND / 700;
     fightCount= 0;
 
     player= initCharacter(PLAYER);
 
     genMaze();
-
-    canvas= document.getElementById('stage');
-    c= canvas.getContext('2d');
-
-    window.addEventListener('resize', resizeCanvas, false);
-    resizeCanvas();
 
     window.addEventListener('touchstart', onMouseDown, false);
     window.addEventListener('mousedown', onMouseDown, false);
