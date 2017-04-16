@@ -1076,11 +1076,22 @@ var __movePlayer= function( x, y, result ) {
     if ( walls ) {
         var action= WALL_ACTIONS[direction][walls];
         if ( action === 0 ) return;
-console.log(walls, action, direction);
+
+// console.log("__movePlayer", walls, action, direction, player.width);
         if ( action & 1 ) y= mazeY1 + player.height * .5;
         if ( action & 2 ) x= mazeX0 + 1 - player.width * .5;
         if ( action & 4 ) y= mazeY0 + 1 - player.height * .5;
         if ( action & 8 ) x= mazeX1 + player.width * .5;
+
+        // Limit movement to "playerSpeed"
+        var dx= x - player.x;
+        var dy= y - player.y;
+        var dist= dx * dx + dy * dy;
+        if ( dist >= playerSpeed ) {
+            var alpha= Math.atan2(dx, dy);
+            x= player.x + Math.sin(alpha) * playerSpeed;
+            y= player.y + Math.cos(alpha) * playerSpeed;
+        }
     }
 
     result[0]= x;
@@ -1089,6 +1100,8 @@ console.log(walls, action, direction);
 
 var pxDirectionPlayerX= 0;
 var pxDirectionPlayerY= 0;
+var playerMouseX= 0;
+var playerMouseY= 0;
 
 // Static, to reduce GCs
 var _movePlayerResult= [ 0, 0 ];
@@ -1132,13 +1145,14 @@ var _movePlayer= function( x, y ) {
 
 // console.log("DIR", (pxDirectionPlayerX - x) * (pxDirectionPlayerX - x) + (pxDirectionPlayerY - y) * (pxDirectionPlayerY - y));
 
-    if ( Math.abs(pxDirectionPlayerX - x) > .1 || Math.abs(pxDirectionPlayerY - y) > .1 ) {
+    // Only change direction if mouse was moved (prevent flip flop)
+    if ( Math.abs(mouseX - playerMouseX) > 3 || Math.abs(mouseY - playerMouseY) > 3 ) {
         direction= Math.abs(x - player.x) > Math.abs(y - player.y) ? 0 : 1;
-// console.log("DIR2", direction);
         pxDirectionPlayerX= x;
         pxDirectionPlayerY= y;
+        playerMouseX= mouseX;
+        playerMouseY= mouseY;
     }
-
 
     if ( toKey !== startKey && items[startKey].closing === 0 ) {
         items[startKey].closing= .1;
@@ -1177,6 +1191,10 @@ var movePlayer= function() {
         return;
     }
 
+    
+
+
+
     var dx= mouseX - player.projX;
     var dy= mouseY - player.projY;
     var dist= dx * dx + dy * dy;
@@ -1185,11 +1203,10 @@ var movePlayer= function() {
     var ps= playerSpeed * pxTileSize;
     var limit= ps * ps + ps * ps;
 
-    if ( 0 && dist < limit ) {
+    if ( dist < limit ) {
         if ( !player.isMoving ) return;
 
         var view= invProj(mouseX, mouseY);
-console.log(view);
 
         // mouseX/mouseY may be out of range
         if ( view === undefined ) return;
