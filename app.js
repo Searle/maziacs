@@ -66,7 +66,7 @@ var playerSpeed;
 var npcSpeed;
 var fightCount;
 var pixelRatio;
-
+var playerMovementLimit;
 
 // =============================================================================
 //  Misc. tools
@@ -836,7 +836,7 @@ var drawCharacter= function( ch ) {
         imageX= Math.floor(ch.x * 15 + ch.y * 25) % 8 + 1;
         imageY= facing(ch.movementX, ch.movementY);
     }
-    else if ( ch.fightBuddy !== undefined ) {
+    else if ( ch.fightBuddy !== undefined && ch.fightBuddy.life >= 0 ) {
         imageX= ch.fighting();
 
         if ( imageX === 5 ) {
@@ -1173,9 +1173,14 @@ var _movePlayer= function( x, y ) {
 
 var movePlayer= function() {
 
+    if ( player.life <= 0 ) {
+        player.life -= itemSpeed;
+        return;
+    }
+
     if ( !player.isMoving && player.fightBuddy ) {
         if ( player.fightBuddy.life > 0 ) {
-///            player.fightBuddy.life--;
+            player.fightBuddy.life--;
             if ( player.fightBuddy.life <= 0 ) {
                 player.fightBuddy.life= 0;
                 player.fightBuddy.fightBuddy= undefined;
@@ -1191,19 +1196,10 @@ var movePlayer= function() {
         return;
     }
 
-    
-
-
-
     var dx= mouseX - player.projX;
     var dy= mouseY - player.projY;
-    var dist= dx * dx + dy * dy;
 
-    // FIXME: Kann einmal ausgerechnet werden
-    var ps= playerSpeed * pxTileSize;
-    var limit= ps * ps + ps * ps;
-
-    if ( dist < limit ) {
+    if ( dx * dx + dy * dy < playerMovementLimit ) {
         if ( !player.isMoving ) return;
 
         var view= invProj(mouseX, mouseY);
@@ -1351,11 +1347,11 @@ var moveNpc= function( npc ) {
         npc.targetY= player.y;
         npc.atTarget= 3;
         _moveNpc(npc, playerSpeed);
-        if ( !npc.isMoving ) {
+        if ( !npc.isMoving && npc.fightBuddy.life >= 0 ) {
 
 // console.log("Player:", npc.fightBuddy.life );
 
-            npc.fightBuddy.life -= .1;
+            npc.fightBuddy.life -= itemSpeed;
         }
         return;
     }
@@ -1431,10 +1427,12 @@ var init= function() {
 
     // FIXME: Rename
     itemSpeed= TICKS_PER_SECOND / 80;
-
     playerSpeed= TICKS_PER_SECOND / 500;
     npcSpeed= TICKS_PER_SECOND / 700;
     fightCount= 0;
+
+    var ps= playerSpeed * pxTileSize;
+    playerMovementLimit= ps * ps + ps * ps;
 
     player= initCharacter(PLAYER);
 
